@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&display=swap');
+
+@layer base {
+  :root {
+    --font-display: 'Clash Display', 'Outfit', sans-serif;
+  }
+  
+  body {
+    background-color: #F4F5F7; /* Light canvas background */
+    color: #0F172A; /* Cool Slate 900 */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Glassmorphism Styles (Sleek Light Version) */
+.glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(108, 71, 255, 0.08);
+}
+
+.glass-glow {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 107, 157, 0.12);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E2E8F0;
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6C47FF;
+}
+
+/* Glow Shadow Metrics */
+.shadow-neon-primary {
+  box-shadow: 0 10px 30px -10px rgba(108, 71, 255, 0.12);
+}
+
+.shadow-neon-secondary {
+  box-shadow: 0 10px 30px -10px rgba(255, 107, 157, 0.12);
+}
+
+/* Recode Pointing Side Arrow Header */
+.recode-arrow {
+  clip-path: polygon(0% 0%, 80% 0%, 100% 50%, 80% 100%, 0% 100%);
+}
+
+/* Radial Glow Background Blobs */
+.radial-glow-primary {
+  background: radial-gradient(circle, rgba(108, 71, 255, 0.08) 0%, rgba(108, 71, 255, 0) 70%);
+}
+
+.radial-glow-secondary {
+  background: radial-gradient(circle, rgba(255, 107, 157, 0.06) 0%, rgba(255, 107, 157, 0) 70%);
+}
+
+/* Premium Card hover lifts */
+.premium-card {
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.premium-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px -15px rgba(108, 71, 255, 0.2);
+  border-color: rgba(108, 71, 255, 0.35);
+}

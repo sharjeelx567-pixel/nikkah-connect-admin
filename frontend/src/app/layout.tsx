@@ -1,0 +1,38 @@
+import type { Metadata } from 'next';
+import { Plus_Jakarta_Sans, Outfit } from 'next/font/google';
+import './globals.css';
+import Providers from '../components/Providers';
+
+const sansFont = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  weight: ['400', '500', '600', '700'],
+});
+
+const displayFont = Outfit({
+  subsets: ['latin'],
+  variable: '--font-display',
+  weight: ['500', '600', '700', '800'],
+});
+
+export const metadata: Metadata = {
+  title: 'NikkahConnect — Enterprise Admin Panel',
+  description: 'Manage users, photos, verifications, and platform settings for NikkahConnect in real-time.',
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" className="h-full">
+      <body
+        className={`${sansFont.variable} ${displayFont.variable} antialiased h-full font-sans bg-bg text-text-primary`}
+        suppressHydrationWarning
+      >
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
