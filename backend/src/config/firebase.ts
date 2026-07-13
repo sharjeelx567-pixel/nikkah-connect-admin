@@ -18,16 +18,32 @@ export function initializeFirebase(): void {
 
     console.log(`[Firebase] Looking for service account key at: ${resolvedPath}`);
 
-    if (fs.existsSync(resolvedPath)) {
-      const serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+    let serviceAccount;
+
+    // 1. Try to load from Environment Variable (Vercel Production)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        console.log('[Firebase] Loaded Service Account from FIREBASE_SERVICE_ACCOUNT environment variable.');
+      } catch (err) {
+        console.error('[Firebase] Failed to parse FIREBASE_SERVICE_ACCOUNT JSON string.', err);
+      }
+    } 
+    // 2. Try to load from File (Local Development)
+    else if (fs.existsSync(resolvedPath)) {
+      serviceAccount = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+      console.log('[Firebase] Loaded Service Account from local file.');
+    }
+
+    if (serviceAccount) {
       firebaseApp = initializeApp({
         credential: cert(serviceAccount),
         projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id,
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
       });
-      console.log('[Firebase] Initialized with Service Account file successfully.');
+      console.log('[Firebase] Initialized with Service Account successfully.');
     } else {
-      console.warn('[Firebase] Service account file not found. Attempting to fall back to application default credentials.');
+      console.warn('[Firebase] Service account not found in env or file. Attempting to fall back to application default credentials.');
       firebaseApp = initializeApp({
         projectId: process.env.FIREBASE_PROJECT_ID || 'nikkah-48a59',
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,

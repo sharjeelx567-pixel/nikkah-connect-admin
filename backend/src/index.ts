@@ -82,7 +82,15 @@ async function seedDefaultAdmin() {
 }
 
 // Start Server
-app.listen(PORT, async () => {
-  console.log(`[Server] Admin API is running on http://localhost:${PORT}`);
-  await seedDefaultAdmin();
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, async () => {
+    console.log(`[Server] Admin API is running on http://localhost:${PORT}`);
+    await seedDefaultAdmin();
+  });
+} else {
+  // Execute seed when booting up in production
+  seedDefaultAdmin().catch(console.error);
+}
+
+export default app;
+
