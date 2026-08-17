@@ -18,7 +18,19 @@ initializeFirebase();
 // Security Middlewares
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'https://nikkah-connect-admin-panel.vercel.app',
+      'https://nikkah-connect-admin-iota.vercel.app',
+      'https://nikkah-connect-admin-knvx.vercel.app'
+    ];
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
 
