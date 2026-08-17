@@ -7,7 +7,7 @@ import api from '../../../services/api';
 import { Admin, AdminRole } from '../../../types';
 import { ShieldCheck, Plus, Search, MoreVertical, Edit2, Trash2, Power, PowerOff, Key } from 'lucide-react';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
-import { app } from '../../../config/firebase';
+import app from '../../../config/firebase';
 
 export default function AdminsPage() {
   const queryClient = useQueryClient();
