@@ -66,7 +66,8 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
         title,
         body,
         isRead: false,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        createdAt: serverTimestamp()
       });
       
       count++;

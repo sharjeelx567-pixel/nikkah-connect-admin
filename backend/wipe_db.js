@@ -1,0 +1,67 @@
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
+const serviceAccount = require('./serviceAccountKey.json');
+
+initializeApp({
+  credential: cert(serviceAccount)
+});
+
+const db = getFirestore();
+
+async function deleteCollection(collectionPath) {
+  const collectionRef = db.collection(collectionPath);
+  const query = collectionRef.limit(500);
+
+  return new Promise((resolve, reject) => {
+    deleteQueryBatch(query, resolve).catch(reject);
+  });
+}
+
+async function deleteQueryBatch(query, resolve) {
+  const snapshot = await query.get();
+
+  const batchSize = snapshot.size;
+  if (batchSize === 0) {
+    resolve();
+    return;
+  }
+
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+
+  await batch.commit();
+  process.nextTick(() => {
+    deleteQueryBatch(query, resolve);
+  });
+}
+
+const { getAuth } = require('firebase-admin/auth');
+
+async function deleteAllAuthUsers() {
+  const auth = getAuth();
+  let nextPageToken = undefined;
+  do {
+    const listUsersResult = await auth.listUsers(1000, nextPageToken);
+    const uids = listUsersResult.users.map((userRecord) => userRecord.uid);
+    if (uids.length > 0) {
+      await auth.deleteUsers(uids);
+      console.log(`Deleted ${uids.length} users from Firebase Auth.`);
+    }
+    nextPageToken = listUsersResult.pageToken;
+  } while (nextPageToken);
+}
+
+async function wipeAll() {
+  const collections = ['users', 'verification_requests', 'matches', 'chats', 'messages', 'reports', 'payments', 'connection_requests'];
+  for (const coll of collections) {
+    console.log(`Deleting collection: ${coll}`);
+    await deleteCollection(coll);
+  }
+  console.log('Deleting all Authentication users...');
+  await deleteAllAuthUsers();
+  console.log('Database wiped successfully.');
+}
+
+wipeAll().then(() => process.exit(0)).catch(console.error);

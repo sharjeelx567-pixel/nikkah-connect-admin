@@ -10,6 +10,8 @@ import settingsRoutes from './settings.routes';
 import matchingRoutes from './matching.routes';
 import paymentsRoutes from './payments.routes';
 import supportRoutes from './support.routes';
+import adminsRoutes from './admins.routes';
+import adminAlertsRoutes from './admin-alerts.routes';
 
 const router = Router();
 
@@ -24,5 +26,7 @@ router.use('/settings', settingsRoutes);
 router.use('/matching', matchingRoutes);
 router.use('/payments', paymentsRoutes);
 router.use('/support', supportRoutes);
+router.use('/admins', adminsRoutes);
+router.use('/admin-alerts', adminAlertsRoutes);
 
 export default router;

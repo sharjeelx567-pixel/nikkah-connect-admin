@@ -63,6 +63,7 @@ export default function Sidebar({ pendingCounts }: { pendingCounts?: Record<stri
     { name: 'Premium Management', href: '/premium', icon: CreditCard },
     { name: 'Notifications', href: '/notifications', icon: Bell },
     { name: 'Content Management', href: '/content', icon: FileText },
+    { name: 'Admin Management', href: '/admins', icon: ShieldCheck, role: ['super_admin'] },
     { name: 'App Settings', href: '/settings', icon: Settings, role: ['super_admin'] },
   ];
 
@@ -176,24 +177,26 @@ export default function Sidebar({ pendingCounts }: { pendingCounts?: Record<stri
       <div className="p-4 border-t border-primary/10 bg-white/2 space-y-3">
         <AnimatePresence initial={false}>
           {!isCollapsed && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/15 rounded-2xl shadow-sm"
-            >
-              <div className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0">
-                {admin?.displayName?.charAt(0) || 'A'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-xs font-bold text-text-primary truncate">
-                  {admin?.displayName || 'Admin'}
-                </h4>
-                <span className="text-[9px] text-text-secondary font-bold tracking-wider uppercase block">
-                  {admin?.role.replace('_', ' ') || 'Moderator'}
-                </span>
-              </div>
-            </motion.div>
+            <Link href="/profile" className="block">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/15 rounded-2xl shadow-sm hover:bg-primary/10 transition-colors cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0">
+                  {admin?.displayName?.charAt(0) || 'A'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-text-primary truncate">
+                    {admin?.displayName || 'Admin'}
+                  </h4>
+                  <span className="text-[9px] text-text-secondary font-bold tracking-wider uppercase block">
+                    {admin?.role?.replace('_', ' ') || 'Moderator'}
+                  </span>
+                </div>
+              </motion.div>
+            </Link>
           )}
         </AnimatePresence>
 

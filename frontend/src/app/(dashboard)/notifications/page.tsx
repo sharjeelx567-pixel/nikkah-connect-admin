@@ -83,6 +83,8 @@ export default function NotificationsPage() {
                   { value: 'all', label: 'All Users' },
                   { value: 'premium', label: 'Premium' },
                   { value: 'verified', label: 'Verified' },
+                  { value: 'male', label: 'Male Users' },
+                  { value: 'female', label: 'Female Users' },
                   { value: 'specific', label: 'Specific User' },
                 ].map((aud) => (
                   <button

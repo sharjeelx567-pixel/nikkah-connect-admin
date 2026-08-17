@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
-import { AdminJwtPayload, AdminRole } from '../types';
+import { AdminRole, AdminJwtPayload } from '../types';
 
 // Extend Express Request to include admin
 declare global {
@@ -11,7 +11,7 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, res: Response, next: NextFunction): void {
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -20,8 +20,9 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
     }
 
     const token = authHeader.split(' ')[1];
+    // Verify custom JWT - no Firebase project dependency
     const decoded = verifyAccessToken(token);
-    req.admin = decoded;
+    req.admin = { uid: decoded.uid, email: decoded.email, role: decoded.role };
     next();
   } catch (error) {
     res.status(401).json({ success: false, error: 'Invalid or expired authorization token' });
@@ -34,15 +35,13 @@ export function authorize(allowedRoles: AdminRole[]) {
       res.status(401).json({ success: false, error: 'Authentication required' });
       return;
     }
-
     if (!allowedRoles.includes(req.admin.role)) {
-      res.status(403).json({ 
-        success: false, 
-        error: `Access denied. Requires one of the following roles: ${allowedRoles.join(', ')}` 
+      res.status(403).json({
+        success: false,
+        error: 'Access denied. Requires one of the following roles: ' + allowedRoles.join(', '),
       });
       return;
     }
-
     next();
   };
 }

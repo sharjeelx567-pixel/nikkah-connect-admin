@@ -89,12 +89,12 @@ export default function ReportsPage() {
                     <AlertTriangle className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm text-text-primary">Report ID: #{report.id.slice(0, 8)}</h4>
+                    <h4 className="font-bold text-sm text-text-primary">Report ID: #{report.id?.slice(0, 8)}</h4>
                     <p className="text-xs text-text-secondary mt-1">
-                      Reporter UID: <span className="font-semibold text-text-primary">{report.reporterId.slice(0, 10)}...</span>
+                      Reporter UID: <span className="font-semibold text-text-primary">{report.reporterId?.slice(0, 10)}...</span>
                     </p>
                     <p className="text-xs text-text-secondary">
-                      Reported Profile UID: <span className="font-semibold text-text-primary">{report.reportedUserId.slice(0, 10)}...</span>
+                      Reported Profile UID: <span className="font-semibold text-text-primary">{report.reportedUserId?.slice(0, 10)}...</span>
                     </p>
                     <div className="mt-3 p-3 bg-bg-surface/50 border border-bg-border rounded-2xl text-xs text-text-primary">
                       <span className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">Reason Description</span>
@@ -104,7 +104,7 @@ export default function ReportsPage() {
                 </div>
 
                 <div className="flex items-center gap-3 w-full md:w-auto self-end md:self-center">
-                  {report.status === 'pending' ? (
+                  {report.status?.toLowerCase() === 'open' ? (
                     <>
                       <button
                         onClick={() => resolveMutation.mutate(report.id)}
@@ -133,3 +133,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+

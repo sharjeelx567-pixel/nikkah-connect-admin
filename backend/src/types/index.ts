@@ -1,16 +1,16 @@
 // ─── Type Definitions ─────────────────────────────────────────────────────────
 
-export type AdminRole = 'super_admin' | 'moderator' | 'support' | 'verification_officer';
+export type AdminRole = 'super_admin' | 'admin' | 'moderator' | 'support_agent' | 'support' | 'verification_officer' | 'content_manager' | 'finance_manager';
 
 export interface Admin {
   uid: string;
   email: string;
   displayName: string;
   role: AdminRole;
-  passwordHash: string;
   isActive: boolean;
   createdAt: FirebaseFirestore.Timestamp;
   lastLoginAt?: FirebaseFirestore.Timestamp;
+  passwordHash?: string;
 }
 
 export interface AdminJwtPayload {
@@ -49,6 +49,7 @@ export interface NikkahUser {
   banReason?: string;
   createdAt: FirebaseFirestore.Timestamp;
   lastLoginAt?: FirebaseFirestore.Timestamp;
+  passwordHash?: string;
 }
 
 export interface Report {
@@ -111,6 +112,8 @@ export interface AppSettings {
   requireEmailVerification: boolean;
   matchingEnabled: boolean;
   chatEnabled: boolean;
+  maxMatchDistanceKm?: number;
+  enforceGenderMatching?: boolean;
   featureFlags: Record<string, boolean>;
 }
 
@@ -124,3 +127,4 @@ export interface DashboardStats {
   pendingReports: number;
   bannedUsers: number;
 }
+

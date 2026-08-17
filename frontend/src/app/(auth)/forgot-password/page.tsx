@@ -4,23 +4,30 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react';
+import { auth } from '../../config/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
 
     setIsLoading(true);
-    // Simulate API request - actual triggers would verify admin account and call Firebase reset email
-    setTimeout(() => {
-      setIsLoading(false);
+    setError('');
+    try {
+      await sendPasswordResetEmail(auth, email);
       setIsSubmitted(true);
-    }, 1200);
+    } catch (err: any) {
+      setError(err.message || 'Failed to send reset email. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -56,6 +63,11 @@ export default function ForgotPasswordPage() {
               <p className="text-text-secondary text-sm">
                 Enter your registered admin email address below, and we will send you instructions to reset your password.
               </p>
+              {error && (
+                <div className="p-3 bg-error/10 text-error rounded-xl text-xs border border-error/20">
+                  {error}
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-text-primary uppercase tracking-wider mb-2">
                   Admin Email
@@ -69,7 +81,7 @@ export default function ForgotPasswordPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin@nikkahconnect.com"
+                    placeholder=""
                     className="w-full pl-10 pr-4 py-3 bg-white rounded-xl border border-bg-border text-sm text-text-primary focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all shadow-sm"
                   />
                 </div>

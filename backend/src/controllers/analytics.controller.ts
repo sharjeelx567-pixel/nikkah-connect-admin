@@ -18,7 +18,7 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
       db.collection('users').where('isPremium', '==', true).count().get(),
       db.collection('users').where('photoStatus', '==', 'pending').count().get(),
       db.collection('users').where('verificationStatus', '==', 'pending').count().get(),
-      db.collection('reports').where('status', '==', 'pending').count().get(),
+      db.collection('support_tickets').where('status', 'in', ['open', 'Open']).count().get(),
       db.collection('users').where('isBanned', '==', true).count().get(),
       db.collection('users').where('createdAt', '>=', todayTimestamp).count().get(),
     ]);

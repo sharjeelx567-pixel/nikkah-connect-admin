@@ -1,13 +1,33 @@
 'use client';
 
-import React from 'react';
-import { usePathname } from 'next/navigation';
-import { Bell, Search, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { ShieldCheck, Bell } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import api from '../../services/api';
 
 export default function TopBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { admin } = useAuthStore();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await api.get('/admin-alerts/unread-count');
+        if (res.data?.count !== undefined) {
+          setUnreadCount(res.data.count);
+        }
+      } catch (err) {
+        // ignore errors
+      }
+    };
+    fetchUnread();
+    // Poll every 30 seconds instead of websocket to avoid firestore rules
+    const interval = setInterval(fetchUnread, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getPageTitle = () => {
     switch (pathname) {
@@ -27,6 +47,8 @@ export default function TopBar() {
         return 'Premium Analytics';
       case '/notifications':
         return 'Push Notifications';
+      case '/admin-alerts':
+        return 'Admin Alerts';
       case '/content':
         return 'Content Management';
       case '/settings':
@@ -57,22 +79,19 @@ export default function TopBar() {
         </p>
       </div>
 
-      <div className="flex items-center gap-6">
-        {/* Search bar light input */}
-        <div className="relative w-64">
-          <Search className="absolute left-3 inset-y-0 my-auto w-4.5 h-4.5 text-text-secondary" />
-          <input
-            type="text"
-            placeholder="Search console..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-100 border border-primary/10 rounded-xl text-xs text-text-primary placeholder:text-text-secondary focus:outline-none focus:border-primary/30 transition-all"
-          />
-        </div>
-
-        {/* Notifications Button */}
-        <button className="relative p-2 hover:bg-slate-100 rounded-xl transition-all text-text-secondary hover:text-text-primary cursor-pointer border border-transparent hover:border-primary/5">
+      <div className="flex items-center gap-6 flex-1 justify-end">
+        {/* Notifications Bell */}
+        <button 
+          onClick={() => router.push('/admin-alerts')}
+          className="relative p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-full transition-colors"
+        >
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-secondary ring-2 ring-white" />
+          {unreadCount > 0 && (
+            <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-error rounded-full border-2 border-white animate-pulse shadow-[0_0_8px_rgba(255,75,75,0.6)]"></span>
+          )}
         </button>
+
+        <div className="h-6 w-px bg-bg-border mx-2"></div>
 
         {/* Secure badge */}
         <div className="flex items-center gap-2 py-1.5 px-3 bg-primary/10 text-primary border border-primary/20 rounded-xl shadow-neon-primary">

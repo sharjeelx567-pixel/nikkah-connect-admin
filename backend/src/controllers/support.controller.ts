@@ -174,44 +174,7 @@ export async function sendAdminReply(req: Request, res: Response): Promise<void>
       timestamp: FieldValue.serverTimestamp()
     });
 
-    // Update ticket metadata
-    await db.collection('support_tickets').doc(id).update({
-      updatedAt: FieldValue.serverTimestamp(),
-      unreadCountUser: FieldValue.increment(1),
-      status: 'Waiting for User',
-    });
-
-    // Send push notification to user
-    try {
-      const ticketDoc = await db.collection('support_tickets').doc(id).get();
-      if (ticketDoc.exists) {
-        const userId = ticketDoc.data()?.userId;
-        if (userId) {
-          const userDoc = await db.collection('users').doc(userId).get();
-          const fcmTokens = userDoc.data()?.fcmTokens || [];
-          if (fcmTokens.length > 0) {
-            await getMessaging().sendEachForMulticast({
-              tokens: fcmTokens,
-              notification: {
-                title: 'Support Reply',
-                body: type === 'text' ? content : 'New attachment received',
-              },
-              android: {
-                notification: {
-                  channelId: 'high_importance_channel',
-                },
-              },
-              data: {
-                type: 'support_reply',
-                ticketId: id
-              }
-            });
-          }
-        }
-      }
-    } catch (pushErr) {
-      console.error('Failed to send push notification', pushErr);
-    }
+    
 
     res.json(successResponse({ messageId: msgRef.id }, 'Reply sent successfully'));
   } catch (error) {

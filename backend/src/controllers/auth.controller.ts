@@ -99,3 +99,54 @@ export async function getMe(req: Request, res: Response): Promise<void> {
 export async function logout(_req: Request, res: Response): Promise<void> {
   res.json(successResponse(null, 'Logged out successfully'));
 }
+
+export async function register(req: Request, res: Response): Promise<void> {
+  try {
+    const { email, password, role } = req.body;
+    if (!email || !password || !role) {
+      res.status(400).json(errorResponse('Email, password, and role are required'));
+      return;
+    }
+
+    const { getAuth } = require('firebase-admin/auth');
+    const { firebaseApp, db } = require('../config/firebase');
+    const auth = getAuth(firebaseApp);
+
+    console.log('firebaseApp:', !!firebaseApp, 'db:', !!db); let userRecord;
+    try {
+      console.log('before getUserByEmail'); userRecord = await auth.getUserByEmail(email); console.log('after getUserByEmail');
+      // User exists, update password
+      await auth.updateUser(userRecord.uid, { password });
+    } catch (e: any) {
+      if (e.code === 'auth/user-not-found') {
+        // User does not exist, create
+        userRecord = await auth.createUser({
+          email,
+          password,
+          displayName: `Admin (${role})`,
+          emailVerified: true
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    // Upsert the admin document in Firestore
+    const adminRef = db.collection('admins').doc(userRecord.uid);
+    await adminRef.set({
+      uid: userRecord.uid,
+      email: email.toLowerCase(),
+      displayName: userRecord.displayName || `Admin (${role})`,
+      role: role,
+      isActive: true,
+      lastLoginAt: serverTimestamp()
+    }, { merge: true });
+
+    await auth.setCustomUserClaims(userRecord.uid, { admin: true, role: role });
+
+    res.json(successResponse(null, 'Admin setup successful'));
+  } catch (error) {
+    console.error('[Auth] Register/Update error:', error);
+    res.status(500).json(errorResponse('Failed to setup admin', error));
+  }
+}

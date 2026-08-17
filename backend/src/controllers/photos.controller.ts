@@ -88,6 +88,16 @@ export async function approvePhoto(req: Request, res: Response): Promise<void> {
       }
     }
 
+    // Add to Firestore notifications subcollection so it shows in the app UI
+    await db.collection('users').doc(uid).collection('notifications').add({
+      title: 'Photo Approved ✅',
+      body: 'Your profile photo has been verified and is now live on NikkahConnect!',
+      timestamp: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      isRead: false,
+      type: 'photo_approved'
+    });
+
     console.log(`[Photos] Photo approved for user: ${uid} by admin: ${req.admin!.email}`);
     res.json(successResponse(null, 'Photo approved. Flutter app updated in real-time.'));
   } catch (error: any) {
@@ -137,6 +147,16 @@ export async function rejectPhoto(req: Request, res: Response): Promise<void> {
       }
     }
 
+    // Add to Firestore notifications subcollection so it shows in the app UI
+    await db.collection('users').doc(uid).collection('notifications').add({
+      title: 'Photo Update Required 📸',
+      body: `Your photo was not approved: ${reason}. Please upload a new one.`,
+      timestamp: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      isRead: false,
+      type: 'photo_rejected'
+    });
+
     res.json(successResponse(null, 'Photo rejected. User will be notified.'));
   } catch (error: any) {
     console.error('[Photos] Error rejecting photo:', error);
@@ -171,6 +191,16 @@ export async function requestReupload(req: Request, res: Response): Promise<void
         console.error('[Photos] Failed to send reupload push notification:', err);
       }
     }
+
+    // Add to Firestore notifications subcollection so it shows in the app UI
+    await db.collection('users').doc(uid).collection('notifications').add({
+      title: 'Photo Re-upload Requested 🔄',
+      body: `Admin requested a new photo: ${reason}`,
+      timestamp: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      isRead: false,
+      type: 'photo_reupload'
+    });
 
     res.json(successResponse(null, 'Re-upload requested. User profile image cleared.'));
   } catch (error: any) {

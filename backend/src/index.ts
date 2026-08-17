@@ -1,5 +1,4 @@
 import dotenv from 'dotenv';
-// Load environment variables first
 dotenv.config();
 
 import express from 'express';
@@ -25,8 +24,8 @@ app.use(cors({
 
 // Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5000, // Limit each IP to 5000 requests per window (increased for Admin polling)
+  windowMs: 15 * 60 * 1000,
+  max: 5000,
   message: { success: false, error: 'Too many requests from this IP, please try again later.' },
 });
 app.use('/api', limiter);
@@ -35,7 +34,7 @@ app.use(express.json());
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`[HTTP] ${req.method} ${req.path}`);
+  console.log('[HTTP] ' + req.method + ' ' + req.path);
   next();
 });
 
@@ -67,12 +66,10 @@ async function seedDefaultAdmin() {
         createdAt: new Date(),
       });
 
-      console.log('─────────────────────────────────────────────────────────────────');
-      console.log(`[Seed] Default Admin Created Successfully!`);
-      console.log(`[Seed] Email: ${defaultEmail}`);
-      console.log(`[Seed] Password: ${defaultPassword}`);
-      console.log('⚠️ IMPORTANT: Please change this password after your first login!');
-      console.log('─────────────────────────────────────────────────────────────────');
+      console.log('[Seed] Default Admin Created Successfully!');
+      console.log('[Seed] Email: ' + defaultEmail);
+      console.log('[Seed] Password: ' + defaultPassword);
+      console.log('[Seed] IMPORTANT: Please change this password after your first login!');
     } else {
       console.log('[Seed] Admin accounts already exist. Skipping seed.');
     }
@@ -82,15 +79,29 @@ async function seedDefaultAdmin() {
 }
 
 // Start Server
-if (process.env.NODE_ENV !== 'production') {
-  app.listen(PORT, async () => {
-    console.log(`[Server] Admin API is running on http://localhost:${PORT}`);
-    await seedDefaultAdmin();
-  });
-} else {
-  // Execute seed when booting up in production
-  seedDefaultAdmin().catch(console.error);
-}
+const server = app.listen(PORT as number, '0.0.0.0', async () => {
+  console.log('[Server] Admin API is running on http://0.0.0.0:' + PORT);
+  await seedDefaultAdmin();
+});
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error('[Server] ERROR: Port ' + PORT + ' is already in use. Kill the other process and restart.');
+  } else {
+    console.error('[Server] Server error:', err);
+  }
+  process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[Server] SIGTERM received, shutting down gracefully...');
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGINT', () => {
+  console.log('[Server] SIGINT received, shutting down gracefully...');
+  server.close(() => process.exit(0));
+});
 
 export default app;
-

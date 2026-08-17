@@ -1,10 +1,13 @@
-export type AdminRole = 'super_admin' | 'moderator' | 'support' | 'verification_officer';
+export type AdminRole = 'super_admin' | 'admin' | 'moderator' | 'support_agent' | 'verification_officer' | 'content_manager' | 'finance_manager';
 
 export interface Admin {
   uid: string;
   email: string;
   displayName: string;
   role: AdminRole;
+  isActive: boolean;
+  createdAt: string;
+  lastLoginAt?: string;
 }
 
 export interface NikkahUser {
@@ -36,14 +39,16 @@ export interface NikkahUser {
 
 export interface Report {
   id: string;
-  reporterId: string;
-  reportedUserId: string;
-  reason: string;
+  userId: string;
+  userEmail?: string;
+  userDisplayName?: string;
+  category: string;
   description?: string;
-  status: 'pending' | 'resolved' | 'dismissed';
+  status: string;
   resolvedBy?: string;
   resolvedAt?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AuditLog {
@@ -67,6 +72,8 @@ export interface AppSettings {
   requireEmailVerification: boolean;
   matchingEnabled: boolean;
   chatEnabled: boolean;
+  maxMatchDistanceKm?: number;
+  enforceGenderMatching?: boolean;
   featureFlags: Record<string, boolean>;
 }
 
@@ -80,3 +87,4 @@ export interface DashboardStats {
   pendingReports: number;
   bannedUsers: number;
 }
+

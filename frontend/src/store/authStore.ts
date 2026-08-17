@@ -7,24 +7,34 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<boolean>;
   logout: () => void;
   checkAuth: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   admin: null,
-  isLoading: false,
+  isLoading: true,
   error: null,
   isAuthenticated: false,
-  login: async (email, password) => {
+
+  login: async (email, password, rememberMe = false) => {
     set({ isLoading: true, error: null });
     try {
+      // Call backend login — backend verifies credentials against Firestore admins collection
+      // and returns a custom JWT (no Firebase project dependency)
       const response = await api.post('/auth/login', { email, password });
       const { accessToken, refreshToken, admin } = response.data.data;
 
-      localStorage.setItem('admin_access_token', accessToken);
-      localStorage.setItem('admin_refresh_token', refreshToken);
+      if (rememberMe) {
+        localStorage.setItem('admin_access_token', accessToken);
+        localStorage.setItem('admin_refresh_token', refreshToken);
+      } else {
+        sessionStorage.setItem('admin_access_token', accessToken);
+        sessionStorage.setItem('admin_refresh_token', refreshToken);
+        localStorage.setItem('admin_access_token', accessToken);
+        localStorage.setItem('admin_refresh_token', refreshToken);
+      }
 
       set({
         admin,
@@ -34,16 +44,21 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       return true;
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || 'Invalid credentials or connection error';
+      const errorMsg =
+        error.response?.data?.error || 'Invalid credentials or connection error';
       set({ isLoading: false, error: errorMsg });
       return false;
     }
   },
+
   logout: () => {
     localStorage.removeItem('admin_access_token');
     localStorage.removeItem('admin_refresh_token');
+    sessionStorage.removeItem('admin_access_token');
+    sessionStorage.removeItem('admin_refresh_token');
     set({ admin: null, isAuthenticated: false });
   },
+
   checkAuth: async () => {
     set({ isLoading: true });
     try {
