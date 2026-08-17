@@ -36,8 +36,8 @@ export default function UsersPage() {
           
           // Fix 8: Sort locally so we don't accidentally exclude users missing createdAt
           fetchedUsers.sort((a, b) => {
-            const dateA = a.createdAt?.toDate?.()?.getTime() || a.createdAt?.seconds ? a.createdAt.seconds * 1000 : 0;
-            const dateB = b.createdAt?.toDate?.()?.getTime() || b.createdAt?.seconds ? b.createdAt.seconds * 1000 : 0;
+            const dateA = (a.createdAt as any)?.toDate?.()?.getTime() || (a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : 0;
+            const dateB = (b.createdAt as any)?.toDate?.()?.getTime() || (b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : 0;
             return dateB - dateA;
           });
           
