@@ -40,6 +40,8 @@ export interface NikkahUser {
 export interface Report {
   id: string;
   userId: string;
+  reporterId?: string;
+  reportedUserId?: string;
   userEmail?: string;
   userDisplayName?: string;
   category: string;
