@@ -42,6 +42,7 @@ export interface Report {
   userId: string;
   reporterId?: string;
   reportedUserId?: string;
+  reason?: string;
   userEmail?: string;
   userDisplayName?: string;
   category: string;
