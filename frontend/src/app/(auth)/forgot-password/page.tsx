@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Mail, ShieldCheck } from 'lucide-react';
-import { auth } from '../../config/firebase';
+import { auth } from '../../../config/firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 
 export default function ForgotPasswordPage() {
