@@ -17,6 +17,7 @@ export interface NikkahUser {
   phoneNumber?: string;
   gender?: string;
   profileImage?: string;
+  pendingProfileImage?: string;
   city?: string;
   country?: string;
   profession?: string;
@@ -91,5 +92,6 @@ export interface DashboardStats {
   pendingReports: number;
   bannedUsers: number;
 }
+
 
 
