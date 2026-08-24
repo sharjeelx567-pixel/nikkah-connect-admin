@@ -1,8 +1,8 @@
-﻿{
+{
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --ext ts,js,json --exec ts-node --transpile-only src/index.ts",
     "build": "tsc",
@@ -12,7 +12,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@google-cloud/firestore": "^9.0.0",
     "bcryptjs": "^3.0.3",
@@ -40,4 +39,3 @@
     "typescript": "^6.0.3"
   }
 }
-
