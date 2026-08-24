@@ -116,5 +116,6 @@ process.on('SIGINT', () => {
   server.close(() => process.exit(0));
 });
 
-export default app;
+module.exports = app;
+
 
