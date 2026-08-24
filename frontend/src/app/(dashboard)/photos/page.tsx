@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import api from '../../../services/api';
 import { NikkahUser } from '../../../types';
-import { Check, X, RefreshCw, Eye, Grid, Sparkles, ShieldCheck, ZoomIn, Heart } from 'lucide-react';
+import { Check, X, RefreshCw, Eye, Grid, Sparkles, ShieldCheck, ZoomIn, Heart, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function PhotosPage() {
   const queryClient = useQueryClient();
@@ -14,6 +14,7 @@ export default function PhotosPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
   const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Fetch pending photos
   const { data, isLoading } = useQuery<{ data: NikkahUser[] }>({
@@ -193,7 +194,7 @@ export default function PhotosPage() {
                           <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">{user.city} â€¢ {user.gender}</p>
                         </div>
                         <button
-                          onClick={() => setSelectedPhoto(user)}
+                          onClick={() => { setSelectedPhoto(user); setCurrentImageIndex(0); }}
                           className="p-2 hover:bg-white/5 border border-primary/15 rounded-xl cursor-pointer transition-colors"
                         >
                           <ZoomIn className="w-4 h-4 text-[#8B88A0] hover:text-white" />
@@ -259,6 +260,11 @@ export default function PhotosPage() {
                   }`}
                 >
                   {/* Select Checkbox badge */}
+                  {((user.pendingGalleryImages?.length ?? 0) > 1) && (
+                    <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded-lg z-20 border border-white/10">
+                      +{(user.pendingGalleryImages?.length ?? 0) - 1}
+                    </div>
+                  )}
                   <button
                     onClick={() => toggleSelectUid(user.uid)}
                     className={`absolute top-2 left-2 w-5 h-5 rounded-lg z-20 flex items-center justify-center border cursor-pointer transition-all ${
@@ -273,7 +279,7 @@ export default function PhotosPage() {
                     
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent opacity-0 group-hover:opacity-100 transition-opacity flex justify-end p-2 items-end">
                       <button
-                        onClick={() => setSelectedPhoto(user)}
+                        onClick={() => { setSelectedPhoto(user); setCurrentImageIndex(0); }}
                         className="p-2 bg-white/20 hover:bg-white/30 backdrop-blur-xs text-white rounded-xl cursor-pointer"
                       >
                         <Eye className="w-4 h-4" />
@@ -307,8 +313,52 @@ export default function PhotosPage() {
               exit={{ scale: 0.9, y: 20 }}
               className="bg-bg-surface rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-primary/10 flex flex-col md:flex-row max-h-[90vh]"
             >
-              <div className="md:w-1/2 aspect-square md:aspect-auto bg-black flex items-center justify-center relative">
-                <img src={selectedPhoto.profileImage} alt="" className="w-full h-full object-contain" />
+                            <div className="md:w-1/2 aspect-square md:aspect-auto bg-black flex flex-col items-center justify-center relative group">
+                {(() => {
+                  const gallery = (selectedPhoto.pendingGalleryImages && selectedPhoto.pendingGalleryImages.length > 0)
+                    ? selectedPhoto.pendingGalleryImages
+                    : [selectedPhoto.profileImage].filter(Boolean);
+                  
+                  return (
+                    <>
+                      <img src={gallery[currentImageIndex]} alt="" className="w-full h-full object-contain" />
+                      
+                      {gallery.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => setCurrentImageIndex(prev => Math.max(0, prev - 1))}
+                            disabled={currentImageIndex === 0}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 text-white rounded-full disabled:opacity-30 hover:bg-black/80 transition-all z-10"
+                          >
+                            <ChevronLeft className="w-5 h-5" />
+                          </button>
+                          
+                          <button
+                            onClick={() => setCurrentImageIndex(prev => Math.min(gallery.length - 1, prev + 1))}
+                            disabled={currentImageIndex === gallery.length - 1}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/50 text-white rounded-full disabled:opacity-30 hover:bg-black/80 transition-all z-10"
+                          >
+                            <ChevronRight className="w-5 h-5" />
+                          </button>
+                          
+                          <div className="absolute bottom-4 flex gap-1.5 z-10">
+                            {gallery.map((_, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setCurrentImageIndex(idx)}
+                                className={`h-1.5 rounded-full transition-all ${idx === currentImageIndex ? 'w-4 bg-primary' : 'w-1.5 bg-white/50 hover:bg-white'}`}
+                              />
+                            ))}
+                          </div>
+                          
+                          <div className="absolute top-4 right-4 bg-black/60 text-white text-[10px] font-bold px-2.5 py-1 rounded-full z-10 backdrop-blur-md">
+                            {currentImageIndex + 1} / {gallery.length}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="md:w-1/2 p-6 flex flex-col justify-between">
@@ -399,4 +449,5 @@ export default function PhotosPage() {
     </div>
   );
 }
+
 
