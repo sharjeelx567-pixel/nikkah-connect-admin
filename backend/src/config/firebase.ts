@@ -1,4 +1,4 @@
-import { initializeApp, cert, App } from 'firebase-admin/app';
+﻿import { initializeApp, cert, App } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getStorage, Storage } from 'firebase-admin/storage';
 import * as admin from 'firebase-admin';
@@ -60,3 +60,4 @@ export function initializeFirebase(): void {
 }
 
 export { db, storage, admin, firebaseApp };
+
