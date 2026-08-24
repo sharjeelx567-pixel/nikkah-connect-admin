@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { db, admin } from '../config/firebase';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
@@ -29,6 +29,10 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    if (!adminData.passwordHash) {
+      res.status(401).json(errorResponse('Invalid email or password'));
+      return;
+    }
     const passwordMatch = await bcrypt.compare(password, adminData.passwordHash);
     if (!passwordMatch) {
       res.status(401).json(errorResponse('Invalid email or password'));
@@ -150,3 +154,4 @@ export async function register(req: Request, res: Response): Promise<void> {
     res.status(500).json(errorResponse('Failed to setup admin', error));
   }
 }
+
