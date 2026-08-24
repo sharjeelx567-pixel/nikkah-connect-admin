@@ -411,7 +411,21 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Operations Actions forms */}
+                                  {/* Gallery Images (Approved) */}
+                  {selectedUser.galleryImages && selectedUser.galleryImages.length > 0 && (
+                    <div className="pt-6 border-t border-slate-100">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-3 block">Approved Gallery</span>
+                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                        {selectedUser.galleryImages.map((img: string, idx: number) => (
+                          <div key={idx} className="w-20 h-24 flex-shrink-0 rounded-xl overflow-hidden border border-slate-200 shadow-sm relative group cursor-pointer">
+                            <img src={img} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Operations Actions forms */}
                 <div className="space-y-5 pt-8 border-t border-slate-100">
                   <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <Sliders className="w-3.5 h-3.5" /> Administrative Actions
@@ -549,5 +563,6 @@ export default function UsersPage() {
     </div>
   );
 }
+
 
 
