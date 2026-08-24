@@ -1,19 +1,16 @@
-﻿import dotenv from 'dotenv';
-dotenv.config();
-
+﻿// @ts-nocheck
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { initializeFirebase, db, admin } from './config/firebase';
+import { initializeFirebase, db } from './config/firebase';
 import apiRoutes from './routes';
 import * as bcrypt from 'bcryptjs';
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Initialize Firebase Admin SDK
+// Initialize Firebase on cold start
 initializeFirebase();
+
+const app = express();
 
 // Security Middlewares
 app.use(helmet());
@@ -23,7 +20,7 @@ app.use(cors({
       'http://localhost:3000',
       'https://nikkah-connect-admin-panel.vercel.app',
       'https://nikkah-connect-admin-iota.vercel.app',
-      'https://nikkah-connect-admin-knvx.vercel.app'
+      'https://nikkah-connect-admin-knvx.vercel.app',
     ];
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -38,19 +35,19 @@ app.use(cors({
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5000,
-  message: { success: false, error: 'Too many requests from this IP, please try again later.' },
+  message: { success: false, error: 'Too many requests, please try again later.' },
 });
 app.use('/api', limiter);
 
 app.use(express.json());
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
-  console.log('[HTTP] ' + req.method + ' ' + req.path);
+  console.log(`[HTTP] ${req.method} ${req.path}`);
   next();
 });
 
-// Mount Routes
+// Routes
 app.use('/api', apiRoutes);
 
 // Root endpoint
@@ -58,68 +55,42 @@ app.get('/', (req, res) => {
   res.json({ name: 'NikkahConnect Admin API', version: '1.0.0', status: 'online' });
 });
 
-// Auto-seed admin user if no admins exist
+// Seed default admin if none exist
 async function seedDefaultAdmin() {
   try {
+    if (!db) return;
     const adminSnapshot = await db.collection('admins').limit(1).get();
     if (adminSnapshot.empty) {
-      console.log('[Seed] No admin accounts found. Seeding default Super Admin...');
-      const defaultEmail = 'admin@nikkahconnect.com';
-      const defaultPassword = 'AdminPassword123!';
+      console.log('[Seed] No admin found. Creating default Super Admin...');
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(defaultPassword, salt);
-
+      const passwordHash = await bcrypt.hash('AdminPassword123!', salt);
       await db.collection('admins').add({
-        email: defaultEmail,
+        email: 'admin@nikkahconnect.com',
         displayName: 'Super Admin',
         role: 'super_admin',
         passwordHash,
         isActive: true,
         createdAt: new Date(),
       });
-
-      console.log('[Seed] Default Admin Created Successfully!');
-      console.log('[Seed] Email: ' + defaultEmail);
-      console.log('[Seed] Password: ' + defaultPassword);
-      console.log('[Seed] IMPORTANT: Please change this password after your first login!');
+      console.log('[Seed] Default admin created: admin@nikkahconnect.com / AdminPassword123!');
     } else {
-      console.log('[Seed] Admin accounts already exist. Skipping seed.');
+      console.log('[Seed] Admin already exists. Skipping seed.');
     }
   } catch (error) {
-    console.error('[Seed] Failed to seed default admin:', error);
+    console.error('[Seed] Error:', error);
   }
 }
 
-if (process.env.VERCEL) {
-  seedDefaultAdmin().catch(console.error);
-} else {
-  const server = app.listen(PORT as number, '0.0.0.0', async () => {
-    console.log('[Server] Admin API is running on http://0.0.0.0:' + PORT);
-    await seedDefaultAdmin();
-  });
+// Run seed asynchronously (non-blocking)
+seedDefaultAdmin();
 
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error('[Server] ERROR: Port ' + PORT + ' is already in use. Kill the other process and restart.');
-    } else {
-      console.error('[Server] Server error:', err);
-    }
-    process.exit(1);
-  });
-
-  process.on('SIGTERM', () => {
-    console.log('[Server] SIGTERM received, shutting down gracefully...');
-    server.close(() => process.exit(0));
-  });
-
-  process.on('SIGINT', () => {
-    console.log('[Server] SIGINT received, shutting down gracefully...');
-    server.close(() => process.exit(0));
+// Local dev server
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`[Server] Running on http://0.0.0.0:${PORT}`);
   });
 }
 
+// Required for Vercel serverless
 module.exports = app;
-
-
-
-
