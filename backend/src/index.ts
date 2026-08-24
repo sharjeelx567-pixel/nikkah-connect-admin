@@ -90,32 +90,35 @@ async function seedDefaultAdmin() {
   }
 }
 
-// Start Server
-const server = app.listen(PORT as number, '0.0.0.0', async () => {
-  console.log('[Server] Admin API is running on http://0.0.0.0:' + PORT);
-  await seedDefaultAdmin();
-});
+if (process.env.VERCEL) {
+  seedDefaultAdmin().catch(console.error);
+} else {
+  const server = app.listen(PORT as number, '0.0.0.0', async () => {
+    console.log('[Server] Admin API is running on http://0.0.0.0:' + PORT);
+    await seedDefaultAdmin();
+  });
 
-server.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error('[Server] ERROR: Port ' + PORT + ' is already in use. Kill the other process and restart.');
-  } else {
-    console.error('[Server] Server error:', err);
-  }
-  process.exit(1);
-});
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error('[Server] ERROR: Port ' + PORT + ' is already in use. Kill the other process and restart.');
+    } else {
+      console.error('[Server] Server error:', err);
+    }
+    process.exit(1);
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('[Server] SIGTERM received, shutting down gracefully...');
-  server.close(() => process.exit(0));
-});
+  process.on('SIGTERM', () => {
+    console.log('[Server] SIGTERM received, shutting down gracefully...');
+    server.close(() => process.exit(0));
+  });
 
-process.on('SIGINT', () => {
-  console.log('[Server] SIGINT received, shutting down gracefully...');
-  server.close(() => process.exit(0));
-});
+  process.on('SIGINT', () => {
+    console.log('[Server] SIGINT received, shutting down gracefully...');
+    server.close(() => process.exit(0));
+  });
+}
 
 module.exports = app;
+
 
 
