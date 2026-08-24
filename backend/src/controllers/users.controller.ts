@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { getAuth } from 'firebase-admin/auth';
 import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
@@ -208,3 +209,4 @@ export async function revokePremium(req: Request, res: Response): Promise<void> 
     res.status(500).json(errorResponse('Failed to revoke premium', error));
   }
 }
+

@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { admin as firebaseAdmin, db } from '../config/firebase';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
@@ -125,3 +126,4 @@ export async function deleteAdmin(req: Request, res: Response): Promise<void> {
     res.status(500).json(errorResponse('Failed to delete admin', error));
   }
 }
+

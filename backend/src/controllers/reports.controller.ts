@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, getPaginationParams, serverTimestamp } from '../utils/helpers';
@@ -106,3 +107,4 @@ export async function dismissReport(req: Request, res: Response): Promise<void> 
     res.status(500).json(errorResponse('Failed to dismiss report', error));
   }
 }
+

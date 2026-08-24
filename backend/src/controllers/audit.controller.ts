@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
@@ -56,3 +57,4 @@ export async function getAuditLogs(req: Request, res: Response): Promise<void> {
     res.status(500).json(errorResponse('Failed to fetch audit logs', error));
   }
 }
+

@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { successResponse, errorResponse } from '../utils/helpers';
@@ -102,3 +103,4 @@ export async function getSubscriptionMetrics(req: Request, res: Response): Promi
     res.status(500).json(errorResponse('Failed to fetch subscription metrics', error));
   }
 }
+

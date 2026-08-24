@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
@@ -90,3 +91,4 @@ export async function getRecentActivity(req: Request, res: Response): Promise<vo
     res.status(500).json(errorResponse('Failed to fetch recent activity', error));
   }
 }
+

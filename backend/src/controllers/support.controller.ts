@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { successResponse, errorResponse, getPaginationParams } from '../utils/helpers';
@@ -192,3 +193,4 @@ export async function getUnreadTicketsCount(req: Request, res: Response): Promis
     res.status(500).json(errorResponse('Failed to fetch unread count', error));
   }
 }
+

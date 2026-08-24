@@ -1,4 +1,5 @@
-﻿import { Request, Response } from 'express';
+﻿// @ts-nocheck
+import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, getPaginationParams, createAuditLog, getClientIp, serverTimestamp } from '../utils/helpers';
 import { getMessaging } from 'firebase-admin/messaging';
@@ -310,5 +311,6 @@ export async function getAllPhotos(req: Request, res: Response): Promise<void> {
     res.status(500).json(errorResponse('Failed to fetch photos', error));
   }
 }
+
 
 

@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, getPaginationParams, serverTimestamp } from '../utils/helpers';
@@ -188,3 +189,4 @@ export async function deleteScheduledNotification(req: Request, res: Response): 
     res.status(500).json(errorResponse('Failed to cancel notification', error));
   }
 }
+

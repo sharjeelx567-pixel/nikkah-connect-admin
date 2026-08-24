@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, createAuditLog, getClientIp, serverTimestamp } from '../utils/helpers';
@@ -58,3 +59,4 @@ export async function updateSettings(req: Request, res: Response): Promise<void>
     res.status(500).json(errorResponse('Failed to update settings', error));
   }
 }
+

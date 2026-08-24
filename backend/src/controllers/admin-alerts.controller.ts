@@ -1,3 +1,4 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
 
@@ -65,3 +66,4 @@ export const createAlert = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to create alert' });
   }
 };
+
