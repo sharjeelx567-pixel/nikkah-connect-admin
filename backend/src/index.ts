@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+﻿import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
@@ -117,3 +117,4 @@ process.on('SIGINT', () => {
 });
 
 export default app;
+
