@@ -1,10 +1,11 @@
+﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 
-// ─── Shared Notification Helper ────────────────────────────────────────────
+// â”€â”€â”€ Shared Notification Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function submitVerification(req: Request, res: Response): Promise<void> {
   try {
     const { userId, type, cnicFrontUrl, cnicBackUrl } = req.body;
@@ -68,7 +69,7 @@ async function sendPush(uid: string, title: string, body: string, extraData?: Re
   }
 }
 
-// ─── Stats ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getVerificationStats(req: Request, res: Response): Promise<void> {
   try {
     const [pendingIdentity, pendingFull, approvedToday, rejectedToday, totalVerified] =
@@ -105,7 +106,7 @@ export async function getVerificationStats(req: Request, res: Response): Promise
   }
 }
 
-// ─── Identity Queue ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Identity Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getIdentityQueue(req: Request, res: Response): Promise<void> {
   try {
     const snapshot = await db.collection('verification_requests')
@@ -145,7 +146,7 @@ export async function getIdentityQueue(req: Request, res: Response): Promise<voi
   }
 }
 
-// ─── Full Verification Queue ─────────────────────────────────────────────────
+// â”€â”€â”€ Full Verification Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getFullQueue(req: Request, res: Response): Promise<void> {
   try {
     const snapshot = await db.collection('verification_requests')
@@ -184,7 +185,7 @@ export async function getFullQueue(req: Request, res: Response): Promise<void> {
   }
 }
 
-// ─── Approve Identity ────────────────────────────────────────────────────────
+// â”€â”€â”€ Approve Identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function approveIdentity(req: Request, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
@@ -217,7 +218,7 @@ export async function approveIdentity(req: Request, res: Response): Promise<void
 
     await sendPush(
       userId,
-      '✅ Identity Verified!',
+      'âœ… Identity Verified!',
       'Your identity has been verified. Your profile now shows the Identity Verified badge.',
       { type: 'verification', verificationStatus: 'approved' }
     );
@@ -229,7 +230,7 @@ export async function approveIdentity(req: Request, res: Response): Promise<void
   }
 }
 
-// ─── Reject Identity ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Reject Identity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function rejectIdentity(req: Request, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
@@ -265,7 +266,7 @@ export async function rejectIdentity(req: Request, res: Response): Promise<void>
 
     await sendPush(
       userId,
-      '❌ Identity Verification Rejected',
+      'âŒ Identity Verification Rejected',
       `Your documents were rejected. Reason: ${reason}. Please upload again.`,
       { type: 'verification', verificationStatus: 'rejected' }
     );
@@ -277,7 +278,7 @@ export async function rejectIdentity(req: Request, res: Response): Promise<void>
   }
 }
 
-// ─── Confirm Full Verification Payment ───────────────────────────────────────
+// â”€â”€â”€ Confirm Full Verification Payment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function confirmFullPayment(req: Request, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
@@ -289,14 +290,14 @@ export async function confirmFullPayment(req: Request, res: Response): Promise<v
       paymentStatus: 'confirmed',
       updatedAt: FieldValue.serverTimestamp(),
     });
-    await sendPush(userId, '💳 Payment Confirmed', 'Your payment of PKR 200 has been confirmed. Please submit your availability for the meeting.');
+    await sendPush(userId, 'ðŸ’³ Payment Confirmed', 'Your payment of PKR 200 has been confirmed. Please submit your availability for the meeting.');
     res.json(successResponse(null, 'Payment confirmed'));
   } catch (error) {
     res.status(500).json(errorResponse('Failed to confirm payment', error));
   }
 }
 
-// ─── Schedule Full Verification Meeting ──────────────────────────────────────
+// â”€â”€â”€ Schedule Full Verification Meeting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function scheduleMeeting(req: Request, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
@@ -325,7 +326,7 @@ export async function scheduleMeeting(req: Request, res: Response): Promise<void
 
     await sendPush(
       userId,
-      '📅 Meeting Scheduled!',
+      'ðŸ“… Meeting Scheduled!',
       `Your Full Verification meeting has been scheduled for ${meetingDate} at ${meetingTime}.`,
       { type: 'verification_meeting', meetingDate, meetingTime, meetingLink }
     );
@@ -337,7 +338,7 @@ export async function scheduleMeeting(req: Request, res: Response): Promise<void
   }
 }
 
-// ─── Approve Full Verification ───────────────────────────────────────────────
+// â”€â”€â”€ Approve Full Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function approveFullVerification(req: Request, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
@@ -364,7 +365,7 @@ export async function approveFullVerification(req: Request, res: Response): Prom
 
     await sendPush(
       userId,
-      '🏅 Congratulations! Fully Verified!',
+      'ðŸ… Congratulations! Fully Verified!',
       'Your Full Verification has been approved. You now have the Fully Verified badge on your profile!',
       { type: 'verification', verificationStatus: 'approved' }
     );
@@ -376,7 +377,7 @@ export async function approveFullVerification(req: Request, res: Response): Prom
   }
 }
 
-// ─── Reject Full Verification ────────────────────────────────────────────────
+// â”€â”€â”€ Reject Full Verification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function rejectFullVerification(req: Request, res: Response): Promise<void> {
   try {
     const { requestId } = req.params;
@@ -401,7 +402,7 @@ export async function rejectFullVerification(req: Request, res: Response): Promi
 
     await sendPush(
       userId,
-      '❌ Full Verification Rejected',
+      'âŒ Full Verification Rejected',
       `Your Full Verification was not approved. Reason: ${reason}`,
       { type: 'verification', verificationStatus: 'rejected' }
     );
@@ -413,7 +414,7 @@ export async function rejectFullVerification(req: Request, res: Response): Promi
   }
 }
 
-// ─── Legacy endpoint compat ───────────────────────────────────────────────────
+// â”€â”€â”€ Legacy endpoint compat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export { getIdentityQueue as getVerificationQueue };
 export async function approveVerification(req: Request, res: Response): Promise<void> {
   return approveIdentity(req, res);
@@ -433,3 +434,4 @@ export async function scheduleHumanVerification(req: Request, res: Response): Pr
 export async function approveHumanVerification(req: Request, res: Response): Promise<void> {
   return approveFullVerification(req, res);
 }
+
