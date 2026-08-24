@@ -1,4 +1,4 @@
-export type AdminRole = 'super_admin' | 'admin' | 'moderator' | 'support_agent' | 'verification_officer' | 'content_manager' | 'finance_manager';
+﻿export type AdminRole = 'super_admin' | 'admin' | 'moderator' | 'support_agent' | 'verification_officer' | 'content_manager' | 'finance_manager';
 
 export interface Admin {
   uid: string;
@@ -23,6 +23,7 @@ export interface NikkahUser {
   profileCompleted: boolean;
   profileStatus: 'pending' | 'approved' | 'rejected';
   photoStatus: 'none' | 'pending' | 'approved' | 'rejected';
+  pendingGalleryImages?: string[]; // Gallery images awaiting moderation (uploaded via edit_profile_screen)
   photoRejectionReason?: string;
   verificationStatus: 'none' | 'pending' | 'approved' | 'rejected';
   verificationDocType?: 'cnic' | 'passport' | 'video';
@@ -90,4 +91,5 @@ export interface DashboardStats {
   pendingReports: number;
   bannedUsers: number;
 }
+
 

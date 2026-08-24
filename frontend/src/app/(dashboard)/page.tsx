@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -247,7 +247,7 @@ export default function DashboardPage() {
               <div key={user.uid} className="flex justify-between items-center text-xs p-3 hover:bg-white/5 rounded-2xl border border-transparent hover:border-primary/10 transition-all">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary-light flex items-center justify-center font-bold border border-primary/20">
-                    {user.profileImage ? <img src={user.profileImage} alt="" className="w-full h-full object-cover rounded-xl" /> : user.displayName?.charAt(0) || 'U'}
+                    {(user.profileImage || user.pendingProfileImage) ? <img src={user.profileImage || user.pendingProfileImage} alt="" className="w-full h-full object-cover rounded-xl" /> : user.displayName?.charAt(0) || 'U'}
                   </div>
                   <div>
                     <h4 className="font-bold text-text-primary">{user.displayName || 'Anonymous'}</h4>
@@ -319,11 +319,11 @@ export default function DashboardPage() {
             </div>
             <ul className="mt-4 space-y-2.5 text-xs text-text-secondary font-semibold">
               <li className="flex items-center gap-2">
-                <span className="w-4 h-4 rounded-full bg-success/20 text-success flex items-center justify-center font-bold text-[9px]">✓</span>
+                <span className="w-4 h-4 rounded-full bg-success/20 text-success flex items-center justify-center font-bold text-[9px]">âœ“</span>
                 <span>Connect Firebase Admin API Server</span>
               </li>
               <li className="flex items-center gap-2">
-                <span className="w-4 h-4 rounded-full bg-success/20 text-success flex items-center justify-center font-bold text-[9px]">✓</span>
+                <span className="w-4 h-4 rounded-full bg-success/20 text-success flex items-center justify-center font-bold text-[9px]">âœ“</span>
                 <span>Seed Super Administrator roles</span>
               </li>
               <li className="flex items-center gap-2">
@@ -337,3 +337,4 @@ export default function DashboardPage() {
     </motion.div>
   );
 }
+

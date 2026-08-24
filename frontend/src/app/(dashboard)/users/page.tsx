@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -213,7 +213,7 @@ export default function UsersPage() {
                   <div className="flex items-center gap-1 group relative">
                     <span>ID Verification</span>
                     {/* Fix 7: Tooltip explaining what Verified means */}
-                    <span className="cursor-help text-primary/60 text-[11px]">ⓘ</span>
+                    <span className="cursor-help text-primary/60 text-[11px]">â“˜</span>
                     <div className="absolute top-5 left-0 z-20 hidden group-hover:block w-56 p-2 bg-bg-surface border border-bg-border rounded-xl shadow-xl text-[10px] normal-case tracking-normal text-text-secondary font-normal">
                       &quot;Verified&quot; means the user submitted a government-issued CNIC or Passport photo that was approved in the Verification Center. It does NOT mean email/phone verified.
                     </div>
@@ -229,8 +229,8 @@ export default function UsersPage() {
                 <tr key={user.uid} className="hover:bg-bg-surface/35 transition-colors">
                   <td className="p-4 pl-6 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-primary/10 overflow-hidden flex-shrink-0 flex items-center justify-center font-bold text-primary">
-                      {user.profileImage ? (
-                        <img src={user.profileImage} alt="" className="w-full h-full object-cover" />
+                      {(user.profileImage || user.pendingProfileImage) ? (
+                        <img src={user.profileImage || user.pendingProfileImage} alt="" className="w-full h-full object-cover" />
                       ) : (
                         user.displayName?.charAt(0) || 'U'
                       )}
@@ -365,8 +365,8 @@ export default function UsersPage() {
                   
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-secondary p-[1px] shadow-[0_0_20px_rgba(108,71,255,0.15)]">
                     <div className="w-full h-full bg-white rounded-[15px] overflow-hidden flex items-center justify-center font-bold text-xl text-primary">
-                      {selectedUser.profileImage ? (
-                        <img src={selectedUser.profileImage} alt="" className="w-full h-full object-cover" />
+                      {(selectedUser.profileImage || selectedUser.pendingProfileImage) ? (
+                        <img src={selectedUser.profileImage || selectedUser.pendingProfileImage} alt="" className="w-full h-full object-cover" />
                       ) : (
                         selectedUser.displayName?.charAt(0) || 'U'
                       )}
@@ -549,3 +549,5 @@ export default function UsersPage() {
     </div>
   );
 }
+
+

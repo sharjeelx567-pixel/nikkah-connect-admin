@@ -1,12 +1,41 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, getPaginationParams, createAuditLog, getClientIp, serverTimestamp } from '../utils/helpers';
 import { getMessaging } from 'firebase-admin/messaging';
 
-// ─── Photo Approval — THE MOST CRITICAL FEATURE ──────────────────────────────
+// ─── Photo Approval — THE MOST CRITICAL FEATURE ─────────────────────────────
 // When admin approves a photo, Firestore photoStatus changes to 'approved'.
 // The Flutter app listens to this field via a real-time stream and instantly
 // shows the real photo without any page refresh required.
+
+// ─── Helper: resolve the best displayable image for a pending user ───────────
+// Flutter writes to TWO different fields depending on which screen uploads:
+//   1. my_profile_screen.dart  → pendingProfileImage (string)
+//   2. edit_profile_screen.dart → pendingGalleryImages (string[])
+// Both paths set photoStatus = 'pending', so the admin query finds both,
+// but we must read whichever field actually contains the image.
+function resolvePendingImage(data: any): string {
+  return (
+    data.pendingProfileImage ||                              // my_profile_screen upload
+    (Array.isArray(data.pendingGalleryImages) && data.pendingGalleryImages.length > 0
+      ? data.pendingGalleryImages[0]                        // edit_profile_screen upload
+      : null) ||
+    data.profileImage ||                                    // already-approved fallback
+    ''
+  );
+}
+
+// ─── Helper: resolve all pending images (for gallery-aware approval) ─────────
+function resolvePendingGallery(data: any): string[] {
+  const gallery: string[] = Array.isArray(data.pendingGalleryImages)
+    ? data.pendingGalleryImages.filter(Boolean)
+    : [];
+  // Also include pendingProfileImage in the list if it is separate from gallery
+  if (data.pendingProfileImage && !gallery.includes(data.pendingProfileImage)) {
+    gallery.unshift(data.pendingProfileImage);
+  }
+  return gallery;
+}
 
 export async function getPendingPhotos(req: Request, res: Response): Promise<void> {
   try {
@@ -21,16 +50,22 @@ export async function getPendingPhotos(req: Request, res: Response): Promise<voi
     const countSnap = await db.collection('users').where('photoStatus', '==', 'pending').count().get();
     const total = countSnap.data().count;
 
-    const photos = snapshot.docs.map(doc => ({
-      uid: doc.id,
-      displayName: doc.data().displayName,
-      email: doc.data().email,
-      profileImage: doc.data().pendingProfileImage || doc.data().profileImage,
-      city: doc.data().city,
-      gender: doc.data().gender,
-      photoStatus: doc.data().photoStatus,
-      updatedAt: doc.data().updatedAt,
-    }));
+    const photos = snapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      return {
+        uid: doc.id,
+        displayName: data.displayName,
+        email: data.email,
+        // FIX: resolve from BOTH pendingProfileImage and pendingGalleryImages
+        profileImage: resolvePendingImage(data),
+        // Also expose all pending gallery images so admin can browse them
+        pendingGalleryImages: resolvePendingGallery(data),
+        city: data.city,
+        gender: data.gender,
+        photoStatus: data.photoStatus,
+        updatedAt: data.updatedAt,
+      };
+    });
 
     res.json(successResponse({
       data: photos,
@@ -50,12 +85,34 @@ export async function approvePhoto(req: Request, res: Response): Promise<void> {
     const { uid } = req.params as { uid: string };
 
     const userDoc = await db.collection('users').doc(uid).get();
-    const pendingImage = userDoc.data()?.pendingProfileImage;
+    const data = userDoc.data() || {};
+
+    // FIX: Read pendingProfileImage OR fall back to first item in pendingGalleryImages
+    const pendingImage: string =
+      data.pendingProfileImage ||
+      (Array.isArray(data.pendingGalleryImages) && data.pendingGalleryImages.length > 0
+        ? data.pendingGalleryImages[0]
+        : null) ||
+      data.profileImage ||
+      '';
+
+    // FIX: Promote pendingGalleryImages → galleryImages on approval
+    const pendingGallery: string[] = Array.isArray(data.pendingGalleryImages)
+      ? data.pendingGalleryImages.filter(Boolean)
+      : [];
+    const existingGallery: string[] = Array.isArray(data.galleryImages)
+      ? data.galleryImages.filter(Boolean)
+      : [];
+    // Merge without duplicates
+    const mergedGallery = [...existingGallery, ...pendingGallery.filter(url => !existingGallery.includes(url))];
 
     // This single Firestore update triggers real-time update in Flutter app
     await db.collection('users').doc(uid).update({
-      profileImage: pendingImage || userDoc.data()?.profileImage,
+      profileImage: pendingImage || data.profileImage || '',
       pendingProfileImage: null,
+      // FIX: promote gallery images and clear pending gallery
+      galleryImages: mergedGallery,
+      pendingGalleryImages: [],
       photoStatus: 'approved',
       photoApprovedAt: serverTimestamp(),
       photoApprovedBy: req.admin!.uid,
@@ -68,12 +125,12 @@ export async function approvePhoto(req: Request, res: Response): Promise<void> {
       action: 'APPROVE_PHOTO',
       targetId: uid,
       targetType: 'photo',
-      details: {},
+      details: { promotedGalleryCount: pendingGallery.length },
       timestamp: serverTimestamp() as any,
       ip: getClientIp(req) as string,
     });
 
-    const fcmToken = userDoc.data()?.fcmToken;
+    const fcmToken = data.fcmToken;
     if (fcmToken) {
       try {
         await getMessaging().send({
@@ -98,7 +155,7 @@ export async function approvePhoto(req: Request, res: Response): Promise<void> {
       type: 'photo_approved'
     });
 
-    console.log(`[Photos] Photo approved for user: ${uid} by admin: ${req.admin!.email}`);
+    console.log(`[Photos] Photo approved for user: ${uid} by admin: ${req.admin!.email}. Gallery promoted: ${pendingGallery.length} images.`);
     res.json(successResponse(null, 'Photo approved. Flutter app updated in real-time.'));
   } catch (error: any) {
     console.error('[Photos] Error approving photo:', error);
@@ -116,6 +173,8 @@ export async function rejectPhoto(req: Request, res: Response): Promise<void> {
     await db.collection('users').doc(uid).update({
       photoStatus: 'rejected',
       pendingProfileImage: null,
+      // FIX: also clear pending gallery images on rejection
+      pendingGalleryImages: [],
       photoRejectionReason: reason,
       photoRejectedAt: serverTimestamp(),
       photoRejectedBy: req.admin!.uid,
@@ -175,6 +234,8 @@ export async function requestReupload(req: Request, res: Response): Promise<void
       photoStatus: 'none',
       photoRejectionReason: reason,
       pendingProfileImage: null,
+      // FIX: also clear pending gallery images when requesting re-upload
+      pendingGalleryImages: [],
     });
 
     const fcmToken = userDoc.data()?.fcmToken;
@@ -183,7 +244,7 @@ export async function requestReupload(req: Request, res: Response): Promise<void
         await getMessaging().send({
           token: fcmToken,
           notification: {
-            title: 'Photo Re-upload Requested 🔄',
+            title: 'Photo Re-upload Requested 📸',
             body: `Admin requested a new photo: ${reason}`,
           }
         });
@@ -194,7 +255,7 @@ export async function requestReupload(req: Request, res: Response): Promise<void
 
     // Add to Firestore notifications subcollection so it shows in the app UI
     await db.collection('users').doc(uid).collection('notifications').add({
-      title: 'Photo Re-upload Requested 🔄',
+      title: 'Photo Re-upload Requested 📸',
       body: `Admin requested a new photo: ${reason}`,
       timestamp: serverTimestamp(),
       createdAt: serverTimestamp(),
@@ -214,7 +275,7 @@ export async function getAllPhotos(req: Request, res: Response): Promise<void> {
     const { status } = req.query as { status?: string };
     const { page, limit } = getPaginationParams(req.query);
 
-    let query: FirebaseFirestore.Query = db.collection('users');
+    let query: any = db.collection('users');
 
     if (status && status !== 'all') {
       query = query.where('photoStatus', '==', status);
@@ -226,17 +287,28 @@ export async function getAllPhotos(req: Request, res: Response): Promise<void> {
     query = query.offset((page - 1) * limit).limit(limit);
     const snapshot = await query.get();
 
-    const photos = snapshot.docs.map(doc => ({
-      uid: doc.id,
-      displayName: doc.data().displayName,
-      profileImage: doc.data().profileImage,
-      photoStatus: doc.data().photoStatus,
-      photoRejectionReason: doc.data().photoRejectionReason,
-      updatedAt: doc.data().updatedAt,
-    }));
+    const photos = snapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      return {
+        uid: doc.id,
+        displayName: data.displayName,
+        // FIX: for pending users, show the pending image; for approved, show profileImage
+        profileImage: data.photoStatus === 'pending'
+          ? resolvePendingImage(data)
+          : (data.profileImage || ''),
+        pendingGalleryImages: data.photoStatus === 'pending'
+          ? resolvePendingGallery(data)
+          : [],
+        photoStatus: data.photoStatus,
+        photoRejectionReason: data.photoRejectionReason,
+        updatedAt: data.updatedAt,
+      };
+    });
 
     res.json(successResponse({ data: photos }));
   } catch (error) {
     res.status(500).json(errorResponse('Failed to fetch photos', error));
   }
 }
+
+

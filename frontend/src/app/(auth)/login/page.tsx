@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -37,14 +37,6 @@ export default function LoginPage() {
     setIsProcessing(true);
 
     try {
-      // Create or update the user first
-      try {
-        await api.post('/auth/register', { email, password, role });
-      } catch (err: any) {
-        setLocalError(err.response?.data?.error || 'Authentication setup failed.');
-        setIsProcessing(false);
-        return;
-      }
 
       // Proceed to login via Firebase
       const success = await login(email, password, rememberMe);
@@ -179,7 +171,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   className="w-full h-[52px] pl-11 pr-11 bg-slate-50 hover:bg-slate-100 focus:bg-white rounded-2xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
                 />
                 <button
@@ -241,3 +233,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

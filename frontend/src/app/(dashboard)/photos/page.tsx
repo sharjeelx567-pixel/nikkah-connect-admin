@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -190,7 +190,7 @@ export default function PhotosPage() {
                       <div className="flex justify-between items-center">
                         <div>
                           <h4 className="font-bold text-sm text-text-primary font-display">{user.displayName || 'Anonymous'}</h4>
-                          <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">{user.city} • {user.gender}</p>
+                          <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">{user.city} â€¢ {user.gender}</p>
                         </div>
                         <button
                           onClick={() => setSelectedPhoto(user)}
@@ -265,7 +265,7 @@ export default function PhotosPage() {
                       isChecked ? 'bg-primary border-primary text-white' : 'bg-black/40 backdrop-blur-xs border-primary/20 text-transparent'
                     }`}
                   >
-                    ✓
+                    âœ“
                   </button>
 
                   <div className="aspect-[4/5] bg-white/3 relative overflow-hidden">
@@ -399,3 +399,4 @@ export default function PhotosPage() {
     </div>
   );
 }
+
