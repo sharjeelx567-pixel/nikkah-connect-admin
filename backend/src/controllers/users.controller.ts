@@ -38,12 +38,12 @@ export function shouldSendPush(
  * Never throws — a notification failure must not roll back the moderation
  * action itself.
  */
-async function notifyUser(
+export async function notifyUser(
   uid: string,
   title: string,
   body: string,
   type: string,
-  options: { critical?: boolean } = {}
+  options: { critical?: boolean; relatedId?: string } = {}
 ): Promise<void> {
   try {
     const notifRef = db.collection('users').doc(uid).collection('notifications').doc();
@@ -54,6 +54,7 @@ async function notifyUser(
       type,
       isRead: false,
       createdAt: serverTimestamp(),
+      ...(options.relatedId && { relatedId: options.relatedId }),
     });
 
     const settingsDoc = await db
@@ -70,9 +71,13 @@ async function notifyUser(
     }
     if (tokens.length === 0) return;
 
+    // The Flutter tap-handler (push_notification_service.dart) routes off
+    // `data.relatedId` (and `data.senderId` for chat) — without relatedId
+    // here, a support/bug-report push would arrive but tapping it could
+    // never open the specific ticket, only fall through silently.
     await admin.messaging().sendEachForMulticast({
       notification: { title, body },
-      data: { type },
+      data: { type, ...(options.relatedId && { relatedId: options.relatedId }) },
       tokens,
     });
   } catch (err) {

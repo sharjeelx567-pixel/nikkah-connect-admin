@@ -1,4 +1,4 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
 import { r2Client, r2Buckets } from '../config/r2';
@@ -8,6 +8,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import path from 'path';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
+import { notifyUser } from './users.controller';
 
 // Support attachments are uploaded straight to Cloudflare R2 (in-memory,
 // no local disk) — Vercel's filesystem is ephemeral per-invocation, so
@@ -142,15 +143,21 @@ export async function uploadSupportAttachment(req: Request, res: Response): Prom
     const ext = path.extname(req.file.originalname) || '.jpg';
     const filename = `support_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`;
     const fileKey = filename;
+    let fileUrl = '';
 
-    await r2Client.send(new PutObjectCommand({
-      Bucket: r2Buckets.support.bucket,
-      Key: fileKey,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-    }));
-
-    const fileUrl = `${r2Buckets.support.domain}/${fileKey}`;
+    try {
+      await r2Client.send(new PutObjectCommand({
+        Bucket: r2Buckets.support.bucket,
+        Key: fileKey,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+      }));
+      fileUrl = `${r2Buckets.support.domain}/${fileKey}`;
+    } catch (r2Err) {
+      console.warn('[Support] R2 upload failed, falling back to data URL:', r2Err);
+      const b64 = req.file.buffer.toString('base64');
+      fileUrl = `data:${req.file.mimetype};base64,${b64}`;
+    }
 
     res.json(successResponse({
       url: fileUrl,
@@ -175,10 +182,29 @@ export async function updateTicketStatus(req: Request, res: Response): Promise<v
     }
 
     const ticketRef = db.collection('support_tickets').doc(id);
+    const ticketSnap = await ticketRef.get();
+    const ticketData = ticketSnap.data();
+
     await ticketRef.update({
       status,
       updatedAt: FieldValue.serverTimestamp()
     });
+
+    // Tell the reporting user their ticket was resolved — this previously
+    // never happened at all (the status changed, nothing told them). Uses
+    // the same 'bug_resolved' type + relatedId the Flutter tap-handler
+    // (push_notification_service.dart) already had routing logic for,
+    // waiting on a notification that was never actually sent.
+    if (status === 'Resolved' && ticketData?.userId) {
+      const category = ticketData.category ? `${ticketData.category} report` : 'support ticket';
+      await notifyUser(
+        ticketData.userId,
+        'Your report has been resolved ✅',
+        `Your ${category} has been reviewed and marked as resolved. Tap to view the conversation.`,
+        'bug_resolved',
+        { relatedId: id }
+      );
+    }
 
     // Log activity (per-ticket history shown in the ticket detail view)
     await db.collection('ticket_activity').add({

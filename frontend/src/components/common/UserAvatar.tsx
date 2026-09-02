@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { User } from "lucide-react";
@@ -24,17 +24,27 @@ export default function UserAvatar({
     setImgError(false);
   }, [src]);
 
+  const cleanSrc = (src || "").trim();
+  const isLocalPrivateIp =
+    cleanSrc.startsWith("http://192.168.") ||
+    cleanSrc.startsWith("http://10.") ||
+    cleanSrc.startsWith("http://localhost");
+
+  const safeSrc =
+    !isLocalPrivateIp && cleanSrc.startsWith("http://")
+      ? cleanSrc.replace(/^http:\/\//i, "https://")
+      : cleanSrc;
+
   const isValidUrl =
-    src &&
-    typeof src === "string" &&
-    src.trim().length > 0 &&
-    (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:"));
+    !isLocalPrivateIp &&
+    safeSrc.length > 0 &&
+    (safeSrc.startsWith("https://") || safeSrc.startsWith("data:"));
 
   if (isValidUrl && !imgError) {
     return (
       <div className={`${className} overflow-hidden bg-slate-100 flex-shrink-0 flex items-center justify-center border border-slate-200`}>
         <img
-          src={src}
+          src={safeSrc}
           alt={name || "Candidate"}
           className="w-full h-full object-cover"
           onError={() => setImgError(true)}
