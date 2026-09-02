@@ -34,10 +34,14 @@ try {
 
 const app = express();
 
+// Disable x-powered-by header safely
+app.disable('x-powered-by');
+
 // REQUIRED for Vercel - trust the proxy so rate-limiter works correctly
 app.set('trust proxy', 1);
 
 app.use(helmet({
+  hidePoweredBy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
@@ -76,6 +80,7 @@ const limiter = rateLimit({
   max: 5000,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
 });
 app.use('/api', limiter);
 app.use(express.json());
@@ -139,8 +144,8 @@ async function seedDefaultAdmin() {
 
 seedDefaultAdmin();
 
-// Only listen when running standalone in local dev
-if (!process.env.VERCEL && !process.env.VERCEL_ENV && !process.env.NOW_REGION) {
+// Only listen when running standalone directly from CLI (never in serverless)
+if (require.main === module && !process.env.VERCEL && !process.env.NOW_REGION && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`[Server] Running on http://0.0.0.0:${PORT}`));
 }
@@ -152,5 +157,6 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 export default app;
+
 
 
