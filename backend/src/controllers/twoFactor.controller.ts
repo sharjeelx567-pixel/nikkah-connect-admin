@@ -1,28 +1,75 @@
 import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-import { generateSecret, generateURI, verifySync } from 'otplib';
 import * as QRCode from 'qrcode';
 import { db } from '../config/firebase';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
 import { APP_NAME } from '../config/branding';
 
 const BACKUP_CODE_COUNT = 10;
+const BASE32_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
-// Accept one 30-second step of clock drift either side, matching what
-// Google Authenticator and Authy users expect.
-const EPOCH_TOLERANCE_SECONDS = 30;
+function base32Decode(base32: string): Buffer {
+  const clean = base32.toUpperCase().replace(/=+$/, '');
+  let bits = '';
+  for (let i = 0; i < clean.length; i++) {
+    const val = BASE32_CHARS.indexOf(clean[i]);
+    if (val === -1) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const bytes: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.substring(i, i + 8), 2));
+  }
+  return Buffer.from(bytes);
+}
 
-/** Google-Authenticator-compatible TOTP check (otplib v13 functional API). */
-function checkTotp(token: string, secret: string): boolean {
+function base32Encode(buffer: Buffer): string {
+  let bits = '';
+  for (let i = 0; i < buffer.length; i++) {
+    bits += buffer[i].toString(2).padStart(8, '0');
+  }
+  let base32 = '';
+  for (let i = 0; i < bits.length; i += 5) {
+    const chunk = bits.substring(i, i + 5);
+    base32 += BASE32_CHARS[parseInt(chunk.padEnd(5, '0'), 2)];
+  }
+  return base32;
+}
+
+export function generateSecret(length = 20): string {
+  return base32Encode(crypto.randomBytes(length));
+}
+
+export function generateURI({ issuer, label, secret }: { issuer: string; label: string; secret: string }): string {
+  return `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(label)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
+
+function getHotpToken(secretBuffer: Buffer, counter: number): string {
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigInt64BE(BigInt(counter), 0);
+  const hmac = crypto.createHmac('sha1', secretBuffer);
+  hmac.update(counterBuffer);
+  const digest = hmac.digest();
+  const offset = digest[digest.length - 1] & 0xf;
+  const code = ((digest[offset] & 0x7f) << 24) |
+               ((digest[offset + 1] & 0xff) << 16) |
+               ((digest[offset + 2] & 0xff) << 8) |
+               (digest[offset + 3] & 0xff);
+  return (code % 1000000).toString().padStart(6, '0');
+}
+
+/** Google-Authenticator-compatible TOTP check using standard RFC 6238 HMAC-SHA1 */
+function checkTotp(token: string, secret: string, window = 1): boolean {
   if (!token || !secret) return false;
   try {
-    return verifySync({
-      strategy: 'totp',
-      secret,
-      token,
-      epochTolerance: EPOCH_TOLERANCE_SECONDS,
-    }).valid;
+    const key = base32Decode(secret);
+    const currentStep = Math.floor(Date.now() / 1000 / 30);
+    for (let i = -window; i <= window; i++) {
+      const expected = getHotpToken(key, currentStep + i);
+      if (expected === token) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -33,6 +80,7 @@ function generateBackupCodes(): string[] {
     crypto.randomBytes(5).toString('hex').toUpperCase().match(/.{1,5}/g)!.join('-')
   );
 }
+
 
 /**
  * Step 1 of enrolment. Generates a secret and returns it with a QR code for the
@@ -56,7 +104,7 @@ export async function setupTwoFactor(req: Request, res: Response): Promise<void>
     }
 
     const secret = generateSecret();
-    const otpauth = generateURI({ strategy: 'totp', issuer: `${APP_NAME} Admin`, label: data.email || uid, secret });
+    const otpauth = generateURI({ issuer: `${APP_NAME} Admin`, label: data.email || uid, secret });
     const qrDataUrl = await QRCode.toDataURL(otpauth);
 
     await adminDoc.ref.update({
