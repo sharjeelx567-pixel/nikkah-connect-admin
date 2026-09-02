@@ -1,10 +1,15 @@
-﻿node_modules/
+node_modules/
 .env
 .env.*
 .DS_Store
 dist/
 build/
 .next/
-serviceAccountKey.json
+serviceAccountKey*.json
 coverage/
 *.log
+*.tsbuildinfo
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep

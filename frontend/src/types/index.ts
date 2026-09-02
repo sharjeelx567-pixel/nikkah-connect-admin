@@ -1,10 +1,103 @@
-﻿export type AdminRole = 'super_admin' | 'admin' | 'moderator' | 'support_agent' | 'verification_officer' | 'content_manager' | 'finance_manager';
+﻿// Must match the backend's AdminRole exactly (backend/src/types/index.ts) —
+// these are the only values ALLOWED_ADMIN_ROLES accepts on a role update.
+export type AdminRole =
+  | 'super_admin'
+  | 'admin'
+  | 'moderator'
+  | 'verification_staff'
+  | 'support_staff'
+  | 'content_moderator'
+  | 'analyst';
+
+export type AdminPermission =
+  | '*'
+  | 'users.view'
+  | 'users.manage'
+  | 'profiles.view'
+  | 'profiles.manage'
+  | 'photos.view'
+  | 'photos.approve'
+  | 'photos.reject'
+  | 'verification.view'
+  | 'verification.approve'
+  | 'verification.reject'
+  | 'reports.view'
+  | 'reports.manage'
+  | 'support.view'
+  | 'support.respond'
+  | 'support.manage'
+  | 'chat_moderation.view'
+  | 'chat_moderation.manage'
+  | 'connections.view'
+  | 'subscriptions.view'
+  | 'subscriptions.manage'
+  | 'notifications.view'
+  | 'notifications.send'
+  | 'analytics.view'
+  | 'audit_logs.view'
+  | 'admins.view'
+  | 'admins.create'
+  | 'admins.update'
+  | 'admins.disable'
+  | 'admins.delete'
+  | 'roles.view'
+  | 'roles.manage'
+  | 'content.view'
+  | 'content.create'
+  | 'content.update'
+  | 'content.publish'
+  | 'content.delete'
+  | 'settings.view'
+  | 'settings.manage';
+
+export const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
+  'users.view',
+  'users.manage',
+  'profiles.view',
+  'profiles.manage',
+  'photos.view',
+  'photos.approve',
+  'photos.reject',
+  'verification.view',
+  'verification.approve',
+  'verification.reject',
+  'reports.view',
+  'reports.manage',
+  'support.view',
+  'support.respond',
+  'support.manage',
+  'chat_moderation.view',
+  'chat_moderation.manage',
+  'connections.view',
+  'subscriptions.view',
+  'subscriptions.manage',
+  'notifications.view',
+  'notifications.send',
+  'analytics.view',
+  'audit_logs.view',
+  'admins.view',
+  'admins.create',
+  'admins.update',
+  'admins.disable',
+  'admins.delete',
+  'roles.view',
+  'roles.manage',
+  'content.view',
+  'content.create',
+  'content.update',
+  'content.publish',
+  'content.delete',
+  'settings.view',
+  'settings.manage',
+];
 
 export interface Admin {
   uid: string;
   email: string;
   displayName: string;
   role: AdminRole;
+  permissions?: AdminPermission[];
+  effectivePermissions?: AdminPermission[];
   isActive: boolean;
   createdAt: string;
   lastLoginAt?: string;
@@ -21,39 +114,91 @@ export interface NikkahUser {
   city?: string;
   country?: string;
   profession?: string;
-  profileCompleted: boolean;
-  profileStatus: 'pending' | 'approved' | 'rejected';
-  photoStatus: 'none' | 'pending' | 'approved' | 'rejected';
+  occupation?: string;
+  education?: string;
+  age?: number;
+  maritalStatus?: string;
+  bio?: string;
+  profileCompleted?: boolean;
+  profileStatus?: 'pending' | 'approved' | 'rejected';
+  photoStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  photos?: string[];
   galleryImages?: string[];
-  pendingGalleryImages?: string[]; // Gallery images awaiting moderation (uploaded via edit_profile_screen)
+  pendingGalleryImages?: string[];
   photoRejectionReason?: string;
-  verificationStatus: 'none' | 'pending' | 'approved' | 'rejected';
+  verificationStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   verificationDocType?: 'cnic' | 'passport' | 'video';
   verificationDocUrl?: string;
   verificationVideoUrl?: string;
-  isPremium: boolean;
-  isVerified: boolean;
-  isBanned: boolean;
-  isSuspended: boolean;
+  isPremium?: boolean;
+  isVerified?: boolean;
+  isBanned?: boolean;
+  isSuspended?: boolean;
   banReason?: string;
+  heightCm?: number;
+  familyType?: string;
+  sect?: string;
+  ethnicity?: string;
+  caste?: string;
   createdAt?: string;
   lastLoginAt?: string;
 }
 
+export interface UserImageEntry {
+  url: string;
+  isMain: boolean;
+  order: number;
+  status: 'pending' | 'approved';
+  uploadedAt: string | null;
+}
+
+export interface UserPhotoDetail {
+  uid: string;
+  displayName?: string;
+  email?: string;
+  gender?: string;
+  city?: string;
+  photoStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  photoRejectionReason?: string;
+  totalImages: number;
+  maxImages: number;
+  images: UserImageEntry[];
+}
+
 export interface Report {
   id: string;
-  userId: string;
+  _collection?: "reports" | "support_tickets";
+  userId?: string;
   reporterId?: string;
+  reporterUid?: string;
   reportedUserId?: string;
+  reporter?: {
+    uid?: string;
+    displayName?: string;
+    name?: string;
+    email?: string;
+    profileImage?: string;
+    avatar?: string;
+    gender?: string;
+  };
+  reportedUser?: {
+    uid?: string;
+    displayName?: string;
+    name?: string;
+    email?: string;
+    profileImage?: string;
+    avatar?: string;
+    gender?: string;
+  };
   reason?: string;
   userEmail?: string;
   userDisplayName?: string;
-  category: string;
+  category?: string;
   description?: string;
-  status: string;
+  status?: string;
   resolvedBy?: string;
   resolvedAt?: string;
-  createdAt: string;
+  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -63,7 +208,7 @@ export interface AuditLog {
   adminEmail: string;
   action: string;
   targetId: string;
-  targetType: 'user' | 'photo' | 'verification' | 'report' | 'setting';
+  targetType: 'user' | 'photo' | 'verification' | 'report' | 'setting' | 'admin' | 'legal_document' | 'notification';
   details: Record<string, any>;
   timestamp: string;
   ip: string;
@@ -92,8 +237,35 @@ export interface DashboardStats {
   pendingPhotos: number;
   pendingReports: number;
   bannedUsers: number;
+  totalRevenue?: number;
+  recentActivity?: any[];
 }
 
 
+export interface LegalDocument {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  publishedContent?: string;
+  status: 'draft' | 'published' | 'unpublished' | 'archived';
+  version: number;
+  publishedVersion?: number;
+  summary?: string;
+  updatedBy: string;
+  createdAt: any;
+  updatedAt: any;
+  publishedAt?: any;
+}
 
-
+export interface LegalDocumentVersion {
+  id?: string;
+  version: number;
+  publishedVersion?: number;
+  title: string;
+  content: string;
+  status: 'draft' | 'published' | 'unpublished' | 'archived';
+  changeLog?: string;
+  createdBy: string;
+  createdAt: any;
+}

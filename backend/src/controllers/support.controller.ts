@@ -1,9 +1,46 @@
 ﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
-import { successResponse, errorResponse, getPaginationParams } from '../utils/helpers';
+import { r2Client, r2Buckets } from '../config/r2';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { successResponse, errorResponse, getPaginationParams, createAuditLog, getClientIp } from '../utils/helpers';
 import { FieldValue } from 'firebase-admin/firestore';
-import { getMessaging } from 'firebase-admin/messaging';
+import path from 'path';
+import multer from 'multer';
+import { v4 as uuidv4 } from 'uuid';
+
+// Support attachments are uploaded straight to Cloudflare R2 (in-memory,
+// no local disk) — Vercel's filesystem is ephemeral per-invocation, so
+// writing to local disk (the previous approach) never actually persisted.
+const uploadStorage = multer.memoryStorage();
+
+export const upload = multer({
+  storage: uploadStorage,
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Helper: Look up a user's displayName from the users collection, fallback gracefully
+async function resolveUserDisplayName(userId: string, storedName: string): Promise<string> {
+  if (storedName && storedName.trim().length > 0) return storedName.trim();
+  if (!userId) return 'Unknown User';
+  try {
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (userDoc.exists) {
+      const data = userDoc.data();
+      if (data?.displayName) return data.displayName;
+      if (data?.name) return data.name;
+      if (data?.email) return data.email.split('@')[0];
+    }
+  } catch (_) {}
+  return 'Unknown User';
+}
 
 export async function getTickets(req: Request, res: Response): Promise<void> {
   try {
@@ -26,10 +63,14 @@ export async function getTickets(req: Request, res: Response): Promise<void> {
     query = query.limit(limitNum);
     const snapshot = await query.get();
 
-    const tickets = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    // Enrich each ticket with the actual user display name
+    const tickets = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const userDisplayName = await resolveUserDisplayName(data.userId, data.userDisplayName);
+        return { id: doc.id, ...data, userDisplayName };
+      })
+    );
 
     res.json(successResponse({
       tickets,
@@ -71,7 +112,10 @@ export async function getTicketDetails(req: Request, res: Response): Promise<voi
     }
 
     const ticketData = ticketDoc.data();
-    
+
+    // Enrich ticket with resolved displayName
+    const userDisplayName = await resolveUserDisplayName(ticketData?.userId, ticketData?.userDisplayName);
+
     // Fetch messages
     const messagesSnap = await ticketDoc.ref.collection('messages').orderBy('timestamp', 'asc').get();
     const messages = messagesSnap.docs.map(doc => ({
@@ -80,11 +124,43 @@ export async function getTicketDetails(req: Request, res: Response): Promise<voi
     }));
 
     res.json(successResponse({
-      ticket: { id: ticketDoc.id, ...ticketData },
+      ticket: { id: ticketDoc.id, ...ticketData, userDisplayName },
       messages
     }));
   } catch (error) {
     res.status(500).json(errorResponse('Failed to fetch ticket details', error));
+  }
+}
+
+export async function uploadSupportAttachment(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.file) {
+      res.status(400).json(errorResponse('No file uploaded'));
+      return;
+    }
+
+    const ext = path.extname(req.file.originalname) || '.jpg';
+    const filename = `support_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`;
+    const fileKey = filename;
+
+    await r2Client.send(new PutObjectCommand({
+      Bucket: r2Buckets.support.bucket,
+      Key: fileKey,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+    }));
+
+    const fileUrl = `${r2Buckets.support.domain}/${fileKey}`;
+
+    res.json(successResponse({
+      url: fileUrl,
+      filename,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+    }, 'File uploaded successfully'));
+  } catch (error) {
+    console.error('[Support] uploadSupportAttachment error:', error);
+    res.status(500).json(errorResponse('Failed to upload attachment', error));
   }
 }
 
@@ -104,13 +180,26 @@ export async function updateTicketStatus(req: Request, res: Response): Promise<v
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    // Log activity
+    // Log activity (per-ticket history shown in the ticket detail view)
     await db.collection('ticket_activity').add({
       ticketId: id,
       action: 'STATUS_CHANGED',
       adminId: (req as any).admin?.uid || 'system',
       details: `Status changed to ${status}`,
       timestamp: FieldValue.serverTimestamp()
+    });
+
+    // Also record on the global Audit Logs page, alongside every other
+    // admin-mutating action.
+    await createAuditLog({
+      adminId: (req as any).admin?.uid || 'system',
+      adminEmail: (req as any).admin?.email || 'system',
+      action: 'UPDATE_TICKET_STATUS',
+      targetId: id,
+      targetType: 'support_ticket' as any,
+      details: { status },
+      timestamp: new Date(),
+      ip: getClientIp(req),
     });
 
     res.json(successResponse(null, 'Ticket status updated successfully'));
@@ -136,13 +225,24 @@ export async function assignTicket(req: Request, res: Response): Promise<void> {
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    // Log activity
+    // Log activity (per-ticket history shown in the ticket detail view)
     await db.collection('ticket_activity').add({
       ticketId: id,
       action: 'TICKET_ASSIGNED',
       adminId: adminId,
       details: 'Admin claimed the ticket',
       timestamp: FieldValue.serverTimestamp()
+    });
+
+    await createAuditLog({
+      adminId,
+      adminEmail: (req as any).admin?.email || 'system',
+      action: 'ASSIGN_TICKET',
+      targetId: id,
+      targetType: 'support_ticket' as any,
+      details: {},
+      timestamp: new Date(),
+      ip: getClientIp(req),
     });
 
     res.json(successResponse(null, 'Ticket assigned successfully'));
@@ -154,28 +254,35 @@ export async function assignTicket(req: Request, res: Response): Promise<void> {
 export async function sendAdminReply(req: Request, res: Response): Promise<void> {
   try {
     const id = req.params.id as string;
-    const { content, type = 'text', mediaUrl = null } = req.body;
+    const { content = '', type = 'text', mediaUrl = null } = req.body;
 
     if (!content && !mediaUrl) {
       res.status(400).json(errorResponse('Content or mediaUrl is required'));
       return;
     }
 
-    const adminId = (req as any).admin?.uid;
+    const adminId = (req as any).admin?.uid || 'admin';
     const msgRef = db.collection('support_tickets').doc(id).collection('messages').doc();
+
+    const msgType = mediaUrl ? 'image' : (type || 'text');
 
     await msgRef.set({
       senderId: adminId,
       senderType: 'admin',
-      content,
-      type,
-      mediaUrl,
+      content: content || '',
+      type: msgType,
+      mediaUrl: mediaUrl || null,
       isRead: false,
       delivered: true,
       timestamp: FieldValue.serverTimestamp()
     });
 
-    
+    // Update ticket metadata
+    await db.collection('support_tickets').doc(id).update({
+      updatedAt: FieldValue.serverTimestamp(),
+      lastMessage: content || (mediaUrl ? '[Photo Attachment]' : ''),
+      status: 'Waiting for User'
+    });
 
     res.json(successResponse({ messageId: msgRef.id }, 'Reply sent successfully'));
   } catch (error) {
@@ -193,4 +300,3 @@ export async function getUnreadTicketsCount(req: Request, res: Response): Promis
     res.status(500).json(errorResponse('Failed to fetch unread count', error));
   }
 }
-

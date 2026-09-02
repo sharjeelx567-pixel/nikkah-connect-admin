@@ -21,3 +21,21 @@ export function verifyAccessToken(token: string): AdminJwtPayload {
 export function verifyRefreshToken(token: string): AdminJwtPayload {
   return jwt.verify(token, JWT_REFRESH_SECRET) as AdminJwtPayload;
 }
+
+/**
+ * Token issued after a correct password but BEFORE the second factor. It is
+ * deliberately marked `typ: '2fa_challenge'` and carries no role, so
+ * `verifyAccessToken` consumers can never mistake it for a session: the
+ * `authenticate` middleware rejects any token carrying this marker.
+ */
+export function signChallengeToken(uid: string): string {
+  return jwt.sign({ uid, typ: '2fa_challenge' }, JWT_SECRET, { expiresIn: '5m' });
+}
+
+export function verifyChallengeToken(token: string): { uid: string } {
+  const decoded = jwt.verify(token, JWT_SECRET) as any;
+  if (decoded?.typ !== '2fa_challenge') {
+    throw new Error('Not a two-factor challenge token');
+  }
+  return { uid: decoded.uid };
+}

@@ -1,13 +1,11 @@
 // @ts-nocheck
 import { initializeApp, cert, App, getApps } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
-import { getStorage, Storage } from 'firebase-admin/storage';
 import * as admin from 'firebase-admin';
 import * as path from 'path';
 import * as fs from 'fs';
 
 let db: Firestore;
-let storage: Storage;
 let firebaseApp: App;
 
 // Fix literal newline characters inside JSON string values (common when pasting into Vercel UI)
@@ -39,7 +37,6 @@ export function initializeFirebase(): void {
     if (getApps().length > 0) {
       firebaseApp = getApps()[0];
       db = getFirestore(firebaseApp);
-      storage = getStorage(firebaseApp);
       console.log('[Firebase] Reusing existing app.');
       return;
     }
@@ -73,10 +70,9 @@ export function initializeFirebase(): void {
     }
 
     db = getFirestore(firebaseApp);
-    storage = getStorage(firebaseApp);
   } catch (error) {
     console.error('[Firebase] Init error:', error);
   }
 }
 
-export { db, storage, admin, firebaseApp };
+export { db, admin, firebaseApp };

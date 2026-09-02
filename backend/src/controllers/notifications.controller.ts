@@ -1,16 +1,19 @@
-﻿// @ts-nocheck
+// @ts-nocheck
 import { Request, Response } from 'express';
 import { db, admin } from '../config/firebase';
 import { successResponse, errorResponse, getPaginationParams, serverTimestamp } from '../utils/helpers';
 import { FieldPath, WriteBatch } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { logAction } from './audit.controller';
 
 export async function sendNotification(req: Request, res: Response): Promise<void> {
   try {
-    const { title, body, audience, targetUid, scheduledAt } = req.body;
+    const { title, body, scheduledAt } = req.body;
+    const audience = req.body.audience || req.body.target || 'all';
+    const targetUid = req.body.targetUid || req.body.userId || null;
 
-    if (!title || !body || !audience) {
-      res.status(400).json(errorResponse('Title, body, and audience are required.'));
+    if (!title || !body) {
+      res.status(400).json(errorResponse('Notification title and message body are required.'));
       return;
     }
 
@@ -23,10 +26,10 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
         title,
         body,
         audience,
-        targetUid: targetUid || null,
+        targetUid,
         scheduledAt: scheduledDate,
         status: 'pending',
-        sentBy: req.admin!.uid,
+        sentBy: req.admin?.uid || 'admin',
         createdAt: serverTimestamp(),
       });
 
@@ -41,6 +44,10 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
       query = query.where('isPremium', '==', true);
     } else if (audience === 'verified') {
       query = query.where('isVerified', '==', true);
+    } else if (audience === 'male') {
+      query = query.where('gender', '==', 'male');
+    } else if (audience === 'female') {
+      query = query.where('gender', '==', 'female');
     } else if (audience === 'specific') {
       if (!targetUid) {
         res.status(400).json(errorResponse('targetUid is required for specific audience'));
@@ -51,7 +58,7 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
 
     const snapshot = await query.get();
     const tokenSet = new Set<string>();
-    
+
     const batches: WriteBatch[] = [];
     let currentBatch = db.batch();
     let count = 0;
@@ -61,7 +68,7 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
       if (data.fcmToken) {
         tokenSet.add(data.fcmToken);
       }
-      
+
       const notifRef = doc.ref.collection('notifications').doc();
       currentBatch.set(notifRef, {
         title,
@@ -70,7 +77,7 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
         timestamp: serverTimestamp(),
         createdAt: serverTimestamp()
       });
-      
+
       count++;
       if (count === 500) {
         batches.push(currentBatch);
@@ -78,12 +85,14 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
         count = 0;
       }
     });
-    
+
     if (count > 0) {
       batches.push(currentBatch);
     }
-    
-    await Promise.all(batches.map(b => b.commit()));
+
+    if (batches.length > 0) {
+      await Promise.all(batches.map(b => b.commit()));
+    }
 
     const tokens = Array.from(tokenSet);
     let successCount = 0;
@@ -112,22 +121,35 @@ export async function sendNotification(req: Request, res: Response): Promise<voi
       audience,
       targetUid: targetUid || null,
       sentAt: serverTimestamp(),
-      sentBy: req.admin!.uid,
+      sentBy: req.admin?.uid || 'admin',
       successCount,
       failureCount,
-      totalTargets: tokens.length,
+      totalTargets: snapshot.size,
     });
+
+    // Audit Log
+    if (req.admin) {
+      await logAction(
+        req.admin.uid,
+        req.admin.email,
+        'notification_broadcast_sent',
+        docRef.id,
+        'notification',
+        { title, audience, totalTargets: snapshot.size, fcmDevices: tokens.length },
+        req.ip || ''
+      );
+    }
 
     res.json(successResponse({
       id: docRef.id,
       successCount,
       failureCount,
-      totalTargets: tokens.length,
-    }, 'Notification sent successfully.'));
+      totalTargets: snapshot.size,
+    }, 'Notification broadcast dispatched successfully.'));
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Notifications] Send error:', error);
-    res.status(500).json(errorResponse('Failed to send notification', error));
+    res.status(500).json(errorResponse('Failed to send notification', error.message || error));
   }
 }
 
@@ -189,4 +211,3 @@ export async function deleteScheduledNotification(req: Request, res: Response): 
     res.status(500).json(errorResponse('Failed to cancel notification', error));
   }
 }
-

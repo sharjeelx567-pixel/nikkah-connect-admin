@@ -1,13 +1,14 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { getDashboardStats, getUserGrowth, getRecentActivity } from '../controllers/analytics.controller';
-import { authenticate } from '../middlewares/auth.middleware';
+import { authenticate, requirePermission } from '../middlewares/auth.middleware';
 
 const router = Router();
 
 router.use(authenticate);
 
-router.get('/stats', getDashboardStats);
-router.get('/growth', getUserGrowth);
-router.get('/activity', getRecentActivity);
+router.get('/dashboard', requirePermission('analytics.view'), getDashboardStats);
+router.get('/stats', requirePermission('analytics.view'), getDashboardStats);
+router.get('/growth', requirePermission('analytics.view'), getUserGrowth);
+router.get('/activity', requirePermission('analytics.view'), getRecentActivity);
 
 export default router;

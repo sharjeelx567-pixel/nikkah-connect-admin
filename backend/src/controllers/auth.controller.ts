@@ -2,9 +2,29 @@
 import { Request, Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { db, admin } from '../config/firebase';
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
+import {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  signChallengeToken,
+  verifyChallengeToken,
+} from '../utils/jwt';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
-import { Admin } from '../types';
+import { Admin, AdminPermission, ROLE_DEFAULT_PERMISSIONS } from '../types';
+import { verifySecondFactor } from './twoFactor.controller';
+
+// Mirrors the exact computation auth.middleware.ts's `authenticate` does for
+// every subsequent request. Without this, the admin object handed back by
+// login/2FA/me only ever carried `role` — the frontend's hasPermission()
+// then had nothing to check against and silently denied everything except
+// super_admin (which short-circuits on role alone), making every
+// permission-gated UI element vanish for every other role right after
+// signing in, until something else happened to repopulate it.
+function computeEffectivePermissions(adminData: Admin): AdminPermission[] {
+  const defaultPermissions = ROLE_DEFAULT_PERMISSIONS[adminData.role] || [];
+  const customPermissions = adminData.permissions || [];
+  return Array.from(new Set([...defaultPermissions, ...customPermissions]));
+}
 
 export async function login(req: Request, res: Response): Promise<void> {
   try {
@@ -40,6 +60,20 @@ export async function login(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    // Password is correct. If this admin has a second factor, stop here and
+    // issue a short-lived challenge token that can ONLY complete 2FA — it is
+    // not an access token and `authenticate` rejects it (no admin session is
+    // established until the code is verified).
+    if (adminData.twoFactorEnabled === true) {
+      const challengeToken = signChallengeToken(adminDoc.id);
+      console.log(`[Auth] Password OK, 2FA challenge issued: ${email}`);
+      res.json(successResponse({
+        requires2FA: true,
+        challengeToken,
+      }, 'Enter your authenticator code to finish signing in'));
+      return;
+    }
+
     // Update last login
     await adminDoc.ref.update({ lastLoginAt: serverTimestamp() });
 
@@ -52,16 +86,84 @@ export async function login(req: Request, res: Response): Promise<void> {
     res.json(successResponse({
       accessToken,
       refreshToken,
+      requires2FA: false,
       admin: {
         uid: adminDoc.id,
         email: adminData.email,
         displayName: adminData.displayName,
         role: adminData.role,
+        permissions: adminData.permissions || [],
+        effectivePermissions: computeEffectivePermissions(adminData),
       },
     }, 'Login successful'));
   } catch (error) {
     console.error('[Auth] Login error:', error);
     res.status(500).json(errorResponse('An error occurred during login', error));
+  }
+}
+
+/**
+ * Completes a login that stopped at the two-factor challenge. Requires the
+ * short-lived challenge token from `login` plus a current authenticator code
+ * (or an unused backup code). Only here are real session tokens issued.
+ */
+export async function loginVerifyTwoFactor(req: Request, res: Response): Promise<void> {
+  try {
+    const { challengeToken, code } = req.body;
+    if (!challengeToken || !code) {
+      res.status(400).json(errorResponse('Challenge token and code are required'));
+      return;
+    }
+
+    let uid: string;
+    try {
+      uid = verifyChallengeToken(challengeToken).uid;
+    } catch {
+      res.status(401).json(errorResponse('Invalid or expired challenge. Please sign in again.'));
+      return;
+    }
+
+    const adminDoc = await db.collection('admins').doc(uid).get();
+    if (!adminDoc.exists) {
+      res.status(401).json(errorResponse('Admin account not found'));
+      return;
+    }
+    const adminData = adminDoc.data() as Admin;
+
+    // Re-check activation: an admin deactivated between the two steps must not
+    // be able to complete the login.
+    if (adminData.isActive === false) {
+      res.status(403).json(errorResponse('Your account has been deactivated'));
+      return;
+    }
+
+    const ok = await verifySecondFactor(uid, adminData as any, code);
+    if (!ok) {
+      console.warn(`[Auth] Failed 2FA attempt for ${adminData.email}`);
+      res.status(401).json(errorResponse('Invalid authentication code'));
+      return;
+    }
+
+    await adminDoc.ref.update({ lastLoginAt: serverTimestamp() });
+
+    const payload = { uid, email: adminData.email, role: adminData.role };
+    console.log(`[Auth] Admin login (2FA verified): ${adminData.email}`);
+
+    res.json(successResponse({
+      accessToken: signAccessToken(payload),
+      refreshToken: signRefreshToken(payload),
+      admin: {
+        uid,
+        email: adminData.email,
+        displayName: adminData.displayName,
+        role: adminData.role,
+        permissions: adminData.permissions || [],
+        effectivePermissions: computeEffectivePermissions(adminData),
+      },
+    }, 'Login successful'));
+  } catch (error) {
+    console.error('[Auth] 2FA verify error:', error);
+    res.status(500).json(errorResponse('An error occurred verifying your code', error));
   }
 }
 
@@ -74,7 +176,27 @@ export async function refresh(req: Request, res: Response): Promise<void> {
     }
 
     const decoded = verifyRefreshToken(refreshToken);
-    const newAccessToken = signAccessToken({ uid: decoded.uid, email: decoded.email, role: decoded.role });
+
+    // Re-validate against Firestore on every refresh. Without this, a
+    // deactivated or deleted admin could keep minting access tokens for the
+    // lifetime of their refresh token.
+    const adminDoc = await db.collection('admins').doc(decoded.uid).get();
+    if (!adminDoc.exists) {
+      res.status(401).json(errorResponse('Admin account not found'));
+      return;
+    }
+    const adminData = adminDoc.data() as Admin;
+    if (adminData.isActive === false) {
+      res.status(403).json(errorResponse('Your account has been deactivated'));
+      return;
+    }
+
+    // Role comes from the live document, never from the presented token.
+    const newAccessToken = signAccessToken({
+      uid: decoded.uid,
+      email: adminData.email,
+      role: adminData.role,
+    });
 
     res.json(successResponse({ accessToken: newAccessToken }, 'Token refreshed'));
   } catch {
@@ -95,6 +217,10 @@ export async function getMe(req: Request, res: Response): Promise<void> {
       email: data.email,
       displayName: data.displayName,
       role: data.role,
+      permissions: data.permissions || [],
+      // authenticate() already computed this for the current request from
+      // the same Firestore data — reuse it rather than recomputing.
+      effectivePermissions: req.admin!.effectivePermissions,
     }));
   } catch (error) {
     res.status(500).json(errorResponse('Failed to fetch admin profile', error));
@@ -104,57 +230,3 @@ export async function getMe(req: Request, res: Response): Promise<void> {
 export async function logout(_req: Request, res: Response): Promise<void> {
   res.json(successResponse(null, 'Logged out successfully'));
 }
-
-export async function register(req: Request, res: Response): Promise<void> {
-  try {
-    const { email, password, role } = req.body;
-    if (!email || !password || !role) {
-      res.status(400).json(errorResponse('Email, password, and role are required'));
-      return;
-    }
-
-    const { getAuth } = require('firebase-admin/auth');
-    const { firebaseApp, db } = require('../config/firebase');
-    const auth = getAuth(firebaseApp);
-
-    console.log('firebaseApp:', !!firebaseApp, 'db:', !!db); let userRecord;
-    try {
-      console.log('before getUserByEmail'); userRecord = await auth.getUserByEmail(email); console.log('after getUserByEmail');
-      // User exists, update password
-      await auth.updateUser(userRecord.uid, { password });
-    } catch (e: any) {
-      if (e.code === 'auth/user-not-found') {
-        // User does not exist, create
-        userRecord = await auth.createUser({
-          email,
-          password,
-          displayName: `Admin (${role})`,
-          emailVerified: true
-        });
-      } else {
-        throw e;
-      }
-    }
-
-    // Upsert the admin document in Firestore
-    const adminRef = db.collection('admins').doc(userRecord.uid);
-    await adminRef.set({
-      uid: userRecord.uid,
-      email: email.toLowerCase(),
-      displayName: userRecord.displayName || `Admin (${role})`,
-      role: role,
-      isActive: true,
-      lastLoginAt: serverTimestamp()
-    }, { merge: true });
-
-    await auth.setCustomUserClaims(userRecord.uid, { admin: true, role: role });
-
-    res.json(successResponse(null, 'Admin setup successful'));
-  } catch (error) {
-    console.error('[Auth] Register/Update error:', error);
-    res.status(500).json(errorResponse('Failed to setup admin', error));
-  }
-}
-
-
-

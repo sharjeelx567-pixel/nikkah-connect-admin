@@ -49,14 +49,31 @@ export const markAsRead = async (req: Request, res: Response) => {
   }
 };
 
+const ALLOWED_ALERT_TYPES = ['photo_upload', 'verification', 'general'];
+const MAX_TEXT_LENGTH = 300;
+
 export const createAlert = async (req: Request, res: Response) => {
   try {
-    const { title, body, type, targetUid } = req.body;
+    const { title, body, type } = req.body;
+
+    if (typeof title !== 'string' || typeof body !== 'string') {
+      res.status(400).json({ success: false, error: 'title and body must be strings' });
+      return;
+    }
+    if (title.length > MAX_TEXT_LENGTH || body.length > MAX_TEXT_LENGTH) {
+      res.status(400).json({ success: false, error: `title/body must be under ${MAX_TEXT_LENGTH} characters` });
+      return;
+    }
+    const safeType = ALLOWED_ALERT_TYPES.includes(type) ? type : 'general';
+
+    // targetUid is always the verified caller's own uid (set by
+    // verifyFirebaseAppUser) — never trust a client-supplied uid here, or
+    // any caller could forge alerts that appear to be about another user.
     await db.collection('admin_notifications').add({
-      title: title || 'Alert',
-      body: body || '',
-      type: type || 'general',
-      targetUid: targetUid || '',
+      title: title.trim() || 'Alert',
+      body: body.trim(),
+      type: safeType,
+      targetUid: req.appUserUid || '',
       isRead: false,
       timestamp: new Date() // Admin SDK uses standard dates natively
     });

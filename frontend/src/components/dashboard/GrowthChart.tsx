@@ -1,6 +1,6 @@
-'use client';
+﻿"use client";
 
-import React from 'react';
+import React from "react";
 import {
   AreaChart,
   Area,
@@ -9,7 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-} from 'recharts';
+} from "recharts";
 
 interface GrowthData {
   date: string;
@@ -20,7 +20,7 @@ export default function GrowthChart({ data }: { data?: GrowthData[] }) {
   const formatXAxis = (tickItem: string) => {
     try {
       const date = new Date(tickItem);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     } catch {
       return tickItem;
     }
@@ -29,16 +29,16 @@ export default function GrowthChart({ data }: { data?: GrowthData[] }) {
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border border-primary/20 rounded-xl shadow-lg text-xs">
-          <p className="font-semibold text-text-primary">
-            {new Date(payload[0].payload.date).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
+        <div className="bg-white p-3 border border-slate-200 rounded-xl shadow-lg text-xs">
+          <p className="font-semibold text-slate-700">
+            {new Date(payload[0].payload.date).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
             })}
           </p>
-          <p className="text-primary font-bold mt-1">
-            {payload[0].value} Signups
+          <p className="text-indigo-600 font-bold mt-1">
+            {payload[0].value} New Seekers
           </p>
         </div>
       );
@@ -48,7 +48,7 @@ export default function GrowthChart({ data }: { data?: GrowthData[] }) {
 
   if (!data || data.length === 0) {
     return (
-      <div className="h-64 flex items-center justify-center bg-white/3 rounded-3xl border border-dashed border-primary/10 text-xs text-text-secondary">
+      <div className="h-64 flex items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-xs text-slate-400">
         No Growth Data Available
       </div>
     );
@@ -63,22 +63,22 @@ export default function GrowthChart({ data }: { data?: GrowthData[] }) {
         >
           <defs>
             <linearGradient id="growthGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#6C47FF" stopOpacity={0.2} />
-              <stop offset="95%" stopColor="#6C47FF" stopOpacity={0} />
+              <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.18} />
+              <stop offset="95%" stopColor="#4F46E5" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(108, 71, 255, 0.08)" />
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
           <XAxis
             dataKey="date"
             tickFormatter={formatXAxis}
             stroke="#94A3B8"
-            fontSize={10}
+            fontSize={11}
             tickLine={false}
             axisLine={false}
           />
           <YAxis
             stroke="#94A3B8"
-            fontSize={10}
+            fontSize={11}
             tickLine={false}
             axisLine={false}
           />
@@ -86,8 +86,8 @@ export default function GrowthChart({ data }: { data?: GrowthData[] }) {
           <Area
             type="monotone"
             dataKey="signups"
-            stroke="#6C47FF"
-            strokeWidth={2}
+            stroke="#4F46E5"
+            strokeWidth={2.5}
             fillOpacity={1}
             fill="url(#growthGradient)"
           />

@@ -18,7 +18,23 @@ export async function getTransactions(req: Request, res: Response): Promise<void
     }
 
     const snapshot = await query.limit(Number(limit)).get();
-    const transactions = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+
+    // Transaction docs (see processXPayPayment in functions/src/index.ts)
+    // only store userId — enrich with display name/email for the admin table.
+    const transactions = await Promise.all(
+      snapshot.docs.map(async (doc: any) => {
+        const data = doc.data();
+        let userName = '';
+        let userEmail = '';
+        if (data.userId) {
+          const userDoc = await db.collection('users').doc(data.userId).get();
+          const user = userDoc.data();
+          userName = user?.displayName || '';
+          userEmail = user?.email || '';
+        }
+        return { id: doc.id, ...data, userName, userEmail };
+      })
+    );
 
     res.json(successResponse(transactions));
   } catch (error) {

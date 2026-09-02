@@ -1,5 +1,6 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import {
+  getDocumentUrl,
   getVerificationStats,
   getIdentityQueue,
   getFullQueue,
@@ -9,48 +10,49 @@ import {
   scheduleMeeting,
   approveFullVerification,
   rejectFullVerification,
-  // Legacy compat
-  getVerificationQueue,
-  approveVerification,
-  rejectVerification,
   requestNewVerification,
   reviewVerification,
   scheduleHumanVerification,
   approveHumanVerification,
-  submitVerification,
+  getVoiceVerificationQueue,
+  approveVoiceVerification,
+  rejectVoiceVerification,
 } from '../controllers/verification.controller';
-import { authenticate, authorize } from '../middlewares/auth.middleware';
+import { authenticate, requirePermission } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Public route for mobile app to submit verification securely (bypass admin auth)
-router.post('/submit', submitVerification);
-
 router.use(authenticate);
-router.use(authorize(['super_admin', 'moderator', 'verification_officer']));
 
-// ── Stats ──────────────────────────────────────────────────────────────────
-router.get('/stats', getVerificationStats);
+// NOTE: paths below must match verification/page.tsx's actual api.get/patch
+// calls exactly (identity/full as a literal path segment, not a query param
+// or suffix) — a prior mismatch here (e.g. `/identity-queue` vs the
+// frontend's `/identity/queue`) silently 404'd and made the entire CNIC
+// Identity and Full Video Verification queues permanently empty.
+// Route param is named :requestId, not :id — every handler below
+// destructures `const { requestId } = req.params`, so a mismatched param
+// name here would silently pass `undefined` through to Firestore.
+router.get('/document-url', requirePermission('verification.view'), getDocumentUrl);
+router.get('/stats', requirePermission('verification.view'), getVerificationStats);
+router.get('/identity/queue', requirePermission('verification.view'), getIdentityQueue);
+router.get('/full/queue', requirePermission('verification.view'), getFullQueue);
+router.patch('/identity/:requestId/approve', requirePermission('verification.approve'), approveIdentity);
+router.patch('/identity/:requestId/reject', requirePermission('verification.reject'), rejectIdentity);
+router.patch('/full/:requestId/approve', requirePermission('verification.approve'), approveFullVerification);
+router.patch('/full/:requestId/reject', requirePermission('verification.reject'), rejectFullVerification);
+router.patch('/full/:requestId/schedule', requirePermission('verification.approve'), scheduleMeeting);
+router.patch('/full/:requestId/confirm-payment', requirePermission('verification.approve'), confirmFullPayment);
 
-// ── Identity Verification ─────────────────────────────────────────────────
-router.get('/identity/queue', getIdentityQueue);
-router.patch('/identity/:requestId/approve', approveIdentity);
-router.patch('/identity/:requestId/reject', rejectIdentity);
+// Legacy/unused-by-frontend endpoints — kept for API compatibility but no
+// current UI calls these.
+router.patch('/:id/request-new', requirePermission('verification.reject'), requestNewVerification);
+router.patch('/:id/review', requirePermission('verification.view'), reviewVerification);
+router.post('/:id/schedule-human', requirePermission('verification.approve'), scheduleHumanVerification);
+router.patch('/:id/approve-human', requirePermission('verification.approve'), approveHumanVerification);
 
-// ── Full Verification ─────────────────────────────────────────────────────
-router.get('/full/queue', getFullQueue);
-router.patch('/full/:requestId/confirm-payment', confirmFullPayment);
-router.patch('/full/:requestId/schedule', scheduleMeeting);
-router.patch('/full/:requestId/approve', approveFullVerification);
-router.patch('/full/:requestId/reject', rejectFullVerification);
-
-// ── Legacy endpoints (backward compat) ────────────────────────────────────
-router.get('/pending', getVerificationQueue);
-router.patch('/:uid/approve', approveVerification);
-router.patch('/:uid/reject', rejectVerification);
-router.patch('/:uid/request-new', requestNewVerification);
-router.post('/review/:userId', reviewVerification);
-router.post('/human/:bookingId/schedule', scheduleHumanVerification);
-router.post('/human/:userId/approve', approveHumanVerification);
+// ── Voice & Gender Verification Routes (Admin-Only) ────────────────────────
+router.get('/voice-queue', requirePermission('verification.view'), getVoiceVerificationQueue);
+router.patch('/:id/approve-voice', requirePermission('verification.approve'), approveVoiceVerification);
+router.patch('/:id/reject-voice', requirePermission('verification.reject'), rejectVoiceVerification);
 
 export default router;

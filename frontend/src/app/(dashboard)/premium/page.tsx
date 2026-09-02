@@ -1,190 +1,214 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, Banknote, Users, Award, TrendingUp, ShieldCheck } from 'lucide-react';
-import StatCard from '../../../components/dashboard/StatCard';
-import { db } from '../../../config/firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-
-interface PlanDetails {
-  id: string;
-  name: string;
-  price: string;
-  subscribers: number;
-  revenue: number;
-}
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Sparkles, DollarSign, TrendingUp, CreditCard, RotateCcw } from "lucide-react";
+import StatCard from "../../../components/dashboard/StatCard";
+import api from "../../../services/api";
 
 interface Transaction {
   id: string;
-  email: string;
-  planName: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
   amount: number;
-  status: 'active' | 'failed' | 'expired';
-  createdAt: any;
+  paymentMethod?: string;
+  planId?: string;
+  type?: string;
+  status: "completed" | "refunded" | "failed" | string;
+  isRenewal?: boolean;
+  timestamp?: { _seconds: number; _nanoseconds: number } | string;
+}
+
+interface SubscriptionMetrics {
+  activePremiumCount: number;
+  monthlyRevenue: number;
+}
+
+function formatDate(raw: Transaction["timestamp"]) {
+  if (!raw) return "—";
+  const ms = typeof raw === "object" && "_seconds" in raw ? raw._seconds * 1000 : raw;
+  const d = new Date(ms as any);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function getStatusBadge(status: string) {
+  const s = (status || "").toLowerCase();
+  if (s === "completed") {
+    return (
+      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold uppercase">
+        Completed
+      </span>
+    );
+  }
+  if (s === "refunded") {
+    return (
+      <span className="px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-[10px] font-bold uppercase">
+        Refunded
+      </span>
+    );
+  }
+  return (
+    <span className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-bold uppercase">
+      {status || "Unknown"}
+    </span>
+  );
 }
 
 export default function PremiumPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [mrr, setMrr] = useState(0);
-  const [activeSubscribers, setActiveSubscribers] = useState(0);
-  const [plans, setPlans] = useState<PlanDetails[]>([]);
+  const queryClient = useQueryClient();
+  const [refundReason, setRefundReason] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    // Listen to real subscriptions/transactions from Firestore
-    const q = query(collection(db, 'subscriptions'), orderBy('createdAt', 'desc'), limit(100));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const txs: Transaction[] = [];
-      let totalRev = 0;
-      let monthlyRev = 0;
-      let activeSubs = 0;
-      
-      const planStats: Record<string, { name: string; price: number; count: number; rev: number }> = {};
+  const { data: metrics, isLoading: metricsLoading } = useQuery<{ data: SubscriptionMetrics }>({
+    queryKey: ["subscription-metrics"],
+    queryFn: () => api.get("/payments/subscriptions").then((r) => r.data),
+    refetchInterval: 30000,
+  });
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        const tx: Transaction = {
-          id: doc.id,
-          email: data.userEmail || 'Unknown User',
-          planName: data.planName || 'Premium Plan',
-          amount: data.amountPKR || 0,
-          status: data.status || 'active',
-          createdAt: data.createdAt
-        };
-        txs.push(tx);
+  const { data: txData, isLoading: txLoading } = useQuery<{ data: Transaction[] }>({
+    queryKey: ["transactions"],
+    queryFn: () => api.get("/payments/transactions?limit=100").then((r) => r.data),
+    refetchInterval: 20000,
+  });
+  const transactions = txData?.data || [];
 
-        if (tx.status === 'active') {
-          activeSubs++;
-          totalRev += tx.amount;
-          if (tx.planName.toLowerCase().includes('month')) {
-            monthlyRev += tx.amount;
-          } else if (tx.planName.toLowerCase().includes('year')) {
-            monthlyRev += tx.amount / 12;
-          }
+  const totalRevenue = transactions
+    .filter((t) => t.status === "completed")
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
 
-          if (!planStats[tx.planName]) {
-            planStats[tx.planName] = { name: tx.planName, price: tx.amount, count: 0, rev: 0 };
-          }
-          planStats[tx.planName].count++;
-          planStats[tx.planName].rev += tx.amount;
-        }
-      });
+  const refundMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      api.post(`/payments/${id}/refund`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["subscription-metrics"] });
+    },
+    onError: (error: any) => {
+      alert(
+        error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          `Failed to refund transaction (${error?.response?.status || "network error"}).`
+      );
+    },
+  });
 
-      setTransactions(txs);
-      setTotalRevenue(totalRev);
-      setMrr(monthlyRev);
-      setActiveSubscribers(activeSubs);
-
-      const plansArray: PlanDetails[] = Object.keys(planStats).map(key => ({
-        id: key,
-        name: planStats[key].name,
-        price: `Rs ${planStats[key].price}`,
-        subscribers: planStats[key].count,
-        revenue: planStats[key].rev
-      }));
-      
-      // If no data, show empty state instead of dummy
-      setPlans(plansArray);
-    }, (error) => {
-      console.error("Error fetching subscriptions:", error);
-    });
-
-    return () => unsubscribe();
-  }, []);
+  const handleRefund = (tx: Transaction) => {
+    const reason = refundReason[tx.id] || "";
+    if (!confirm(`Refund PKR ${tx.amount.toLocaleString()} to ${tx.userName || tx.userId}? This also removes their premium status.`)) {
+      return;
+    }
+    refundMutation.mutate({ id: tx.id, reason: reason || "Admin requested" });
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Monetization overview cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="space-y-6">
+      {/* 1. Revenue Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <StatCard
-          title="Total Platform Revenue"
-          value={`Rs ${totalRevenue.toLocaleString()}`}
-          icon={Banknote}
-          description="Net cumulative subscription sales"
+          title="Total Completed Revenue"
+          value={metricsLoading || txLoading ? "..." : `PKR ${totalRevenue.toLocaleString()}`}
+          icon={DollarSign}
+          description="Sum of all completed transactions"
           colorTheme="success"
         />
         <StatCard
-          title="Premium Subscriptions"
-          value={activeSubscribers.toLocaleString()}
+          title="Active Premium Subscribers"
+          value={metricsLoading ? "..." : (metrics?.data?.activePremiumCount ?? 0).toLocaleString()}
           icon={Sparkles}
-          description="Active paying subscribers"
+          description="Users with isPremium currently true"
           colorTheme="accent"
         />
         <StatCard
-          title="Monthly Recurring Revenue"
-          value={`Rs ${Math.round(mrr).toLocaleString()}`}
+          title="Revenue (Last 30 Days)"
+          value={metricsLoading ? "..." : `PKR ${Math.round(metrics?.data?.monthlyRevenue ?? 0).toLocaleString()}`}
           icon={TrendingUp}
-          description="Estimated MRR"
+          description="Completed transactions in the trailing 30 days"
           colorTheme="primary"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Plans configuration details */}
-        <div className="lg:col-span-2 glass p-6 border border-primary/10 rounded-3xl shadow-neon-primary premium-card">
-          <div className="flex justify-between items-center pb-4 border-b border-bg-border">
-            <div>
-              <h3 className="text-base font-bold font-display text-text-primary">Subscription Plan Tiers</h3>
-              <p className="text-xs text-text-secondary mt-0.5">Real-time metrics from Firestore</p>
-            </div>
-            <span className="p-1 px-3 bg-accent/10 text-accent-dark font-bold text-[10px] rounded-full uppercase tracking-wider">Active</span>
+      {/* 2. Transactions Table */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+        <div className="flex justify-between items-center p-6 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-indigo-600" />
+              Transaction Ledger
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Every subscription payment recorded in Firestore</p>
           </div>
-
-          <div className="mt-6 space-y-4">
-            {plans.length === 0 ? (
-              <p className="text-center text-sm text-text-secondary py-8">No active subscriptions found.</p>
-            ) : (
-              plans.map((plan, idx) => (
-                <div key={idx} className="p-4 border border-bg-border rounded-2xl hover:bg-bg-surface/30 transition-all flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-                      <Award className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-text-primary">{plan.name}</h4>
-                      <p className="text-xs text-text-secondary">Rate: {plan.price}</p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-text-primary">{plan.subscribers} Members</p>
-                    <p className="text-[10px] text-text-secondary font-medium">Revenue: Rs {plan.revenue.toLocaleString()}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] rounded-full uppercase tracking-wider">
+            Auto-refreshing
+          </span>
         </div>
 
-        {/* Real-time Transaction Feed */}
-        <div className="glass p-6 border border-primary/10 rounded-3xl shadow-neon-primary premium-card flex flex-col h-[400px]">
-          <div className="pb-4 border-b border-bg-border">
-            <h3 className="text-base font-bold font-display text-text-primary">Live Transactions</h3>
-            <p className="text-xs text-text-secondary mt-0.5">Recent subscriptions in PKR</p>
+        {txLoading ? (
+          <div className="p-8 space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-14 bg-slate-50 rounded-xl shimmer" />
+            ))}
           </div>
-
-          <div className="flex-1 overflow-y-auto mt-4 space-y-4 pr-1 custom-scrollbar">
-            {transactions.length === 0 ? (
-              <p className="text-center text-sm text-text-secondary py-8">No recent transactions.</p>
-            ) : (
-              transactions.map((tx) => (
-                <div key={tx.id} className="flex justify-between items-center text-xs p-2 hover:bg-bg-surface/50 rounded-lg">
-                  <div>
-                    <p className="font-bold text-text-primary">{tx.email}</p>
-                    <p className="text-[10px] text-text-secondary">{tx.planName}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`font-semibold ${tx.status === 'active' ? 'text-success' : 'text-error'}`}>
-                      Rs {tx.amount.toLocaleString()}
-                    </p>
-                    <p className="text-[10px] text-text-secondary capitalize">{tx.status}</p>
-                  </div>
-                </div>
-              ))
-            )}
+        ) : transactions.length === 0 ? (
+          <div className="py-16 text-center text-slate-400">
+            <CreditCard className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+            <p className="text-xs font-semibold">No transactions recorded yet.</p>
           </div>
-        </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="px-6 py-3.5">User</th>
+                  <th className="px-6 py-3.5">Plan</th>
+                  <th className="px-6 py-3.5">Amount</th>
+                  <th className="px-6 py-3.5">Method</th>
+                  <th className="px-6 py-3.5">Date</th>
+                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {transactions.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-slate-50/60 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-slate-900">{tx.userName || "Unknown"}</p>
+                      <p className="text-[11px] text-slate-400">{tx.userEmail || tx.userId}</p>
+                    </td>
+                    <td className="px-6 py-4 capitalize">{tx.planId || "—"}</td>
+                    <td className="px-6 py-4 font-bold text-slate-900">PKR {(tx.amount || 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 capitalize text-slate-500">{tx.paymentMethod || "—"}</td>
+                    <td className="px-6 py-4 text-slate-500 font-mono text-[11px]">{formatDate(tx.timestamp)}</td>
+                    <td className="px-6 py-4">{getStatusBadge(tx.status)}</td>
+                    <td className="px-6 py-4 text-right">
+                      {tx.status === "completed" ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Reason (optional)"
+                            value={refundReason[tx.id] || ""}
+                            onChange={(e) => setRefundReason((prev) => ({ ...prev, [tx.id]: e.target.value }))}
+                            className="w-32 px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] outline-none focus:border-indigo-500"
+                          />
+                          <button
+                            onClick={() => handleRefund(tx)}
+                            disabled={refundMutation.isPending}
+                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                            Refund
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-[11px]">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

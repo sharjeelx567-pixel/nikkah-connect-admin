@@ -1,8 +1,8 @@
-'use client';
+﻿"use client";
 
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { LucideIcon } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { LucideIcon } from "lucide-react";
 
 interface StatCardProps {
   title: string;
@@ -11,9 +11,9 @@ interface StatCardProps {
   description?: string;
   trend?: {
     value: string;
-    type: 'up' | 'down';
+    type: "up" | "down";
   };
-  colorTheme?: 'primary' | 'secondary' | 'accent' | 'success';
+  colorTheme?: "primary" | "secondary" | "accent" | "success" | "warning";
 }
 
 const AnimatedCounter = ({ endValue }: { endValue: number }) => {
@@ -21,7 +21,7 @@ const AnimatedCounter = ({ endValue }: { endValue: number }) => {
 
   useEffect(() => {
     let startTimestamp: number | null = null;
-    const duration = 1200;
+    const duration = 900;
 
     const step = (timestamp: number) => {
       if (!startTimestamp) startTimestamp = timestamp;
@@ -44,85 +44,77 @@ export default function StatCard({
   icon: Icon,
   description,
   trend,
-  colorTheme = 'primary',
+  colorTheme = "primary",
 }: StatCardProps) {
-  const isNumeric = typeof value === 'number';
+  const isNumeric = typeof value === "number";
 
-  const getColors = () => {
+  const getThemeClasses = () => {
     switch (colorTheme) {
-      case 'secondary':
+      case "secondary":
         return {
-          bg: 'bg-secondary/15 text-secondary',
-          border: 'border-secondary/20 hover:border-secondary/40',
-          glow: 'hover:shadow-[0_10px_30px_-10px_rgba(255,107,157,0.15)]',
-          topLine: 'group-hover:via-secondary/50',
+          iconBg: "bg-pink-50 text-pink-600",
+          ring: "hover:border-pink-300",
         };
-      case 'accent':
+      case "accent":
+      case "warning":
         return {
-          bg: 'bg-accent/15 text-accent-dark',
-          border: 'border-accent/20 hover:border-accent/40',
-          glow: 'hover:shadow-[0_10px_30px_-10px_rgba(255,215,0,0.15)]',
-          topLine: 'group-hover:via-accent/50',
+          iconBg: "bg-amber-50 text-amber-600",
+          ring: "hover:border-amber-300",
         };
-      case 'success':
+      case "success":
         return {
-          bg: 'bg-success/15 text-success',
-          border: 'border-success/20 hover:border-success/40',
-          glow: 'hover:shadow-[0_10px_30px_-10px_rgba(34,197,94,0.15)]',
-          topLine: 'group-hover:via-success/50',
+          iconBg: "bg-emerald-50 text-emerald-600",
+          ring: "hover:border-emerald-300",
         };
       default:
         return {
-          bg: 'bg-primary/15 text-primary',
-          border: 'border-primary/20 hover:border-primary/40',
-          glow: 'hover:shadow-[0_10px_30px_-10px_rgba(108,71,255,0.15)]',
-          topLine: 'group-hover:via-primary/50',
+          iconBg: "bg-indigo-50 text-indigo-600",
+          ring: "hover:border-indigo-300",
         };
     }
   };
 
-  const theme = getColors();
+  const theme = getThemeClasses();
 
   return (
-    <motion.div
-      whileHover={{ y: -5 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className={`glass p-6 rounded-3xl transition-all duration-300 relative overflow-hidden group cursor-pointer premium-card ${theme.border} ${theme.glow}`}
+    <div
+      className={`bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between ${theme.ring}`}
     >
-      {/* Top border ambient gradient line */}
-      <div className={`absolute top-0 left-0 right-0 h-[2.5px] bg-gradient-to-r from-transparent via-transparent to-transparent ${theme.topLine} transition-all duration-500`} />
-
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest block">
+      <div className="flex items-start justify-between">
+        <div>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
             {title}
           </span>
-          <h3 className="text-3xl font-bold font-display text-text-primary tracking-tight">
+          <h3 className="text-2xl font-bold font-display text-slate-900 mt-1 tracking-tight">
             {isNumeric ? <AnimatedCounter endValue={value as number} /> : value}
           </h3>
         </div>
 
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-transform duration-300 group-hover:scale-105 ${theme.bg}`}>
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${theme.iconBg}`}>
           <Icon className="w-5 h-5" />
         </div>
       </div>
 
       {(description || trend) && (
-        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-primary/10 text-xs">
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
           {trend && (
-            <span className={`font-bold px-2 py-0.5 rounded-lg text-[9px] uppercase tracking-wider ${
-              trend.type === 'up' ? 'text-success bg-success/10 border border-success/15' : 'text-error bg-error/10 border border-error/15'
-            }`}>
+            <span
+              className={`font-semibold px-1.5 py-0.5 rounded-md text-[10px] ${
+                trend.type === "up"
+                  ? "text-emerald-700 bg-emerald-50"
+                  : "text-rose-700 bg-rose-50"
+              }`}
+            >
               {trend.value}
             </span>
           )}
           {description && (
-            <span className="text-text-secondary font-bold text-[9px] uppercase tracking-wider">
+            <span className="text-slate-400 text-xs font-medium">
               {description}
             </span>
           )}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

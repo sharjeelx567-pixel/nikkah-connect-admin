@@ -1,23 +1,22 @@
-import { Router } from 'express';
-import { 
-  getMatchingStats, 
-  getCompatibilityStats, 
-  getConnectionRequests, 
-  getAnonymousSignals, 
-  getDormantProfiles 
+﻿import { Router } from 'express';
+import {
+  getMatchingStats,
+  getCompatibilityStats,
+  getConnectionRequests,
+  getAnonymousSignals,
+  getDormantProfiles,
 } from '../controllers/matching.controller';
-import { authenticate, authorize } from '../middlewares/auth.middleware';
+import { authenticate, requirePermission } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Secure all routes with authentication and admin role requirement
 router.use(authenticate);
-router.use(authorize(['super_admin', 'moderator']));
 
-router.get('/stats', getMatchingStats);
-router.get('/compatibility-stats', getCompatibilityStats);
-router.get('/connection-requests', getConnectionRequests);
-router.get('/anonymous-signals', getAnonymousSignals);
-router.get('/dormant-profiles', getDormantProfiles);
+router.get('/stats', requirePermission('connections.view', 'analytics.view'), getMatchingStats);
+router.get('/compatibility', requirePermission('connections.view', 'analytics.view'), getCompatibilityStats);
+router.get('/connections', requirePermission('connections.view'), getConnectionRequests);
+router.get('/signals', requirePermission('connections.view'), getAnonymousSignals);
+// Frontend (connections/page.tsx) calls /matching/dormant-profiles, not /dormant.
+router.get('/dormant-profiles', requirePermission('connections.view', 'users.view'), getDormantProfiles);
 
 export default router;

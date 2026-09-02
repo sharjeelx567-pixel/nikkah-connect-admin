@@ -1,19 +1,31 @@
-'use client';
+﻿"use client";
 
-import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import api from '../../../services/api';
-import { AppSettings } from '../../../types';
-import { Save, ShieldAlert, Sliders, ToggleLeft, ToggleRight, Banknote } from 'lucide-react';
+import React, { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import api from "../../../services/api";
+import { AppSettings } from "../../../types";
+import {
+  Save,
+  Sliders,
+  Shield,
+  CreditCard,
+  Zap,
+  CheckCircle,
+  ToggleLeft,
+  ToggleRight,
+  Info,
+  DollarSign,
+  Compass
+} from "lucide-react";
 
 export default function SettingsPage() {
-  const [successMsg, setSuccessMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState("");
 
   // Fetch configs
   const { data, isLoading } = useQuery<AppSettings>({
-    queryKey: ['app-configs'],
+    queryKey: ["app-configs"],
     queryFn: async () => {
-      const response = await api.get('/settings');
+      const response = await api.get("/settings");
       return response.data.data;
     },
   });
@@ -21,26 +33,26 @@ export default function SettingsPage() {
   // Mutate configs
   const updateMutation = useMutation({
     mutationFn: async (payload: Partial<AppSettings>) => {
-      const response = await api.patch('/settings', payload);
+      const response = await api.patch("/settings", payload);
       return response.data;
     },
     onSuccess: () => {
-      setSuccessMsg('Configurations successfully dispatched to Flutter clients in real-time.');
-      setTimeout(() => setSuccessMsg(''), 4000);
+      setSuccessMsg("Settings updated and synchronized across all Flutter devices.");
+      setTimeout(() => setSuccessMsg(""), 4000);
     },
   });
 
   if (isLoading || !data) {
     return (
-      <div className="space-y-6">
-        <div className="h-60 bg-white/5 border border-primary/10 rounded-3xl shimmer" />
-        <div className="h-60 bg-white/5 border border-primary/10 rounded-3xl shimmer" />
+      <div className="space-y-6 max-w-4xl">
+        <div className="h-56 bg-white border border-slate-200/80 rounded-2xl shimmer" />
+        <div className="h-56 bg-white border border-slate-200/80 rounded-2xl shimmer" />
       </div>
     );
   }
 
   const handleToggle = (key: keyof AppSettings) => {
-    if (typeof data[key] === 'boolean') {
+    if (typeof data[key] === "boolean") {
       updateMutation.mutate({ [key]: !data[key] });
     }
   };
@@ -51,49 +63,75 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl">
-      {/* Success banner notifications */}
+    <div className="space-y-6 max-w-4xl">
+      {/* Real-time sync feedback notification */}
       {successMsg && (
-        <div className="p-4 bg-success/10 text-success border border-success/15 rounded-2xl text-xs font-semibold">
-          {successMsg}
+        <div className="p-3.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-2">
+          <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <span>{successMsg}</span>
         </div>
       )}
 
-      {/* Global State Toggles */}
-      <div className="glass p-6 border border-primary/10 rounded-3xl shadow-neon-primary premium-card space-y-6">
-        <div className="pb-4 border-b border-bg-border">
-          <h3 className="text-base font-bold font-display text-text-primary">System Toggles</h3>
-          <p className="text-xs text-text-secondary mt-0.5">Control administrative client behaviors</p>
-        </div>
-
-        {/* Fix 4: Make clear these toggles ARE functional */}
-        <div className="p-3 bg-primary/5 border border-primary/20 rounded-2xl text-[10px] text-primary font-medium flex items-start gap-2">
-          <span className="text-base mt-0.5">✅</span>
-          <span>
-            <strong>These toggles ARE fully functional</strong> — they write live to your Firestore config document, and the Flutter app reads them on each launch. Changes take effect within 30 seconds. Toggle a setting to save it immediately.
+      {/* 1. Global Core Toggles */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-indigo-600" />
+              Core Platform Controls
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Live runtime feature toggles read by client apps on launch.
+            </p>
+          </div>
+          <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
+            Live Synchronized
           </span>
         </div>
 
-        <div className="space-y-4">
+        <div className="divide-y divide-slate-100">
           {[
-            { key: 'maintenanceMode' as const, label: 'Maintenance Mode', desc: 'Lock the Flutter app and show a maintenance splash screen to all users.' },
-            { key: 'allowRegistration' as const, label: 'Allow Registrations', desc: 'Temporarily allow or freeze new user account signups on the app.' },
-            { key: 'matchingEnabled' as const, label: 'Match Algorithm', desc: 'Enable or freeze automated daily profile matching calculations.' },
-            { key: 'chatEnabled' as const, label: 'Chat Messaging System', desc: 'Enable or disable the chat engine between matched members.' },
+            {
+              key: "maintenanceMode" as const,
+              label: "Maintenance Mode",
+              desc: "Lock the mobile app and display a maintenance notice screen to all users.",
+            },
+            {
+              key: "allowRegistration" as const,
+              label: "New User Registrations",
+              desc: "Allow new candidate accounts to register or temporarily freeze registrations.",
+            },
+            {
+              key: "matchingEnabled" as const,
+              label: "Match Recommendation Engine",
+              desc: "Enable or freeze daily recommendation and discovery calculations.",
+            },
+            {
+              key: "chatEnabled" as const,
+              label: "Direct In-App Messaging",
+              desc: "Allow matched users to exchange real-time text and media messages.",
+            },
           ].map((toggle) => {
             const isActive = data[toggle.key];
             return (
-              <div key={toggle.key} className="flex justify-between items-center text-xs gap-4 p-3 hover:bg-bg-surface/30 rounded-2xl transition-all">
+              <div
+                key={toggle.key}
+                className="flex items-center justify-between py-4 first:pt-0 last:pb-0 gap-4"
+              >
                 <div>
-                  <h4 className="font-bold text-text-primary">{toggle.label}</h4>
-                  <p className="text-[10px] text-text-secondary mt-0.5">{toggle.desc}</p>
+                  <h4 className="font-bold text-slate-900 text-xs">{toggle.label}</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">{toggle.desc}</p>
                 </div>
+
                 <button
                   type="button"
                   onClick={() => handleToggle(toggle.key)}
-                  className={`text-3xl transition-colors cursor-pointer ${isActive ? 'text-primary' : 'text-text-secondary/50'}`}
+                  className={`transition-colors cursor-pointer flex-shrink-0 ${
+                    isActive ? "text-indigo-600" : "text-slate-300 hover:text-slate-400"
+                  }`}
+                  title={isActive ? "Disable" : "Enable"}
                 >
-                  {isActive ? <ToggleRight className="w-12 h-12" /> : <ToggleLeft className="w-12 h-12" />}
+                  {isActive ? <ToggleRight className="w-10 h-10" /> : <ToggleLeft className="w-10 h-10" />}
                 </button>
               </div>
             );
@@ -101,106 +139,150 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Tiers Pricing parameters */}
-      <div className="glass p-6 border border-primary/10 rounded-3xl shadow-neon-primary premium-card space-y-6">
-        <div className="pb-4 border-b border-bg-border">
-          <h3 className="text-base font-bold font-display text-text-primary">Premium subscription tiers rates</h3>
-          <p className="text-xs text-text-secondary mt-0.5">Set package rates displayed inside Flutter premium paywalls</p>
+      {/* 2. Premium Pricing Configuration */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="pb-4 border-b border-slate-100">
+          <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-indigo-600" />
+            Premium Subscription Package Rates
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Configure in-app purchase and direct payment pricing in PKR.
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block font-semibold uppercase tracking-wider text-text-secondary mb-1">Monthly Plan Rate (PKR)</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Monthly VIP Pass (PKR)
+            </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-text-secondary font-bold text-xs">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 font-bold text-xs">
                 Rs
               </span>
               <input
                 type="number"
-                step="0.01"
+                step="1"
                 defaultValue={data.premiumMonthlyPrice}
                 onBlur={(e) => updateMutation.mutate({ premiumMonthlyPrice: Number(e.target.value) })}
-                className="w-full pl-8 pr-4 py-2.5 bg-bg-surface border border-bg-border rounded-xl focus:outline-none focus:border-primary text-xs"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900"
               />
             </div>
           </div>
 
           <div>
-            <label className="block font-semibold uppercase tracking-wider text-text-secondary mb-1">Yearly Plan Rate (PKR)</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Yearly VIP Pass (PKR)
+            </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-text-secondary font-bold text-xs">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 font-bold text-xs">
                 Rs
               </span>
               <input
                 type="number"
-                step="0.01"
+                step="1"
                 defaultValue={data.premiumYearlyPrice}
                 onBlur={(e) => updateMutation.mutate({ premiumYearlyPrice: Number(e.target.value) })}
-                className="w-full pl-8 pr-4 py-2.5 bg-bg-surface border border-bg-border rounded-xl focus:outline-none focus:border-primary text-xs"
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900"
               />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Matching Algorithm Configuration */}
-      <div className="glass p-6 border border-primary/10 rounded-3xl shadow-neon-primary premium-card space-y-6">
-        <div className="pb-4 border-b border-bg-border">
-          <h3 className="text-base font-bold font-display text-text-primary">Matching Algorithm Controls</h3>
-          <p className="text-xs text-text-secondary mt-0.5">Configure how distance and gender matching logic behaves</p>
+      {/* 3. Matching Algorithm Parameters */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="pb-4 border-b border-slate-100">
+          <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+            <Compass className="w-4 h-4 text-indigo-600" />
+            Matching & Geo-Proximity Rules
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Configure radius constraints and Islamic compatibility matching logic.
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 text-xs">
+        <div className="space-y-4">
           <div>
-            <label className="block font-semibold uppercase tracking-wider text-text-secondary mb-1">Max Match Distance (KM)</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+              Maximum Match Distance Radius (KM)
+            </label>
             <input
               type="number"
               step="1"
               defaultValue={data.maxMatchDistanceKm || 500}
               onBlur={(e) => updateMutation.mutate({ maxMatchDistanceKm: Number(e.target.value) })}
-              className="w-full px-4 py-2.5 bg-bg-surface border border-bg-border rounded-xl focus:outline-none focus:border-primary text-xs"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-900 max-w-sm"
             />
-            <p className="text-[10px] text-text-secondary mt-1">Maximum allowed distance for matching profiles</p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Candidates further apart than this distance will not appear in discovery cards.
+            </p>
           </div>
 
-          <div className="flex justify-between items-center text-xs p-3 bg-bg-surface/30 rounded-2xl border border-bg-border">
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
             <div>
-              <h4 className="font-bold text-text-primary">Enforce Gender Matching</h4>
-              <p className="text-[10px] text-text-secondary mt-0.5">Strictly match males with females and vice versa</p>
+              <h4 className="font-bold text-slate-900 text-xs">Strict Opposite Gender Matching</h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Ensure males only match with females and females with males.
+              </p>
             </div>
             <button
               type="button"
-              onClick={() => updateMutation.mutate({ enforceGenderMatching: !(data.enforceGenderMatching ?? true) })}
-              className={`text-3xl transition-colors cursor-pointer ${data.enforceGenderMatching ?? true ? 'text-primary' : 'text-text-secondary/50'}`}
+              onClick={() =>
+                updateMutation.mutate({
+                  enforceGenderMatching: !(data.enforceGenderMatching ?? true),
+                })
+              }
+              className={`transition-colors cursor-pointer ${
+                data.enforceGenderMatching ?? true
+                  ? "text-indigo-600"
+                  : "text-slate-300 hover:text-slate-400"
+              }`}
             >
-              {data.enforceGenderMatching ?? true ? <ToggleRight className="w-12 h-12" /> : <ToggleLeft className="w-12 h-12" />}
+              {data.enforceGenderMatching ?? true ? (
+                <ToggleRight className="w-10 h-10" />
+              ) : (
+                <ToggleLeft className="w-10 h-10" />
+              )}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Feature Flags indicators */}
-      <div className="glass p-6 border border-primary/10 rounded-3xl shadow-neon-primary premium-card space-y-6">
-        <div className="pb-4 border-b border-bg-border">
-          <h3 className="text-base font-bold font-display text-text-primary">Extended Feature Flags</h3>
-          <p className="text-xs text-text-secondary mt-0.5">Toggle beta features dynamically without code releases</p>
+      {/* 4. Extended Feature Flags */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-6">
+        <div className="pb-4 border-b border-slate-100">
+          <h3 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+            <Zap className="w-4 h-4 text-indigo-600" />
+            Experimental & Beta Feature Flags
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Safely toggle emerging capabilities without releasing a new mobile build.
+          </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="divide-y divide-slate-100">
           {Object.keys(data.featureFlags).map((flag) => {
-            const isActive = data.featureFlags[flag];
+            const isEnabled = data.featureFlags[flag];
             return (
-              <div key={flag} className="flex justify-between items-center text-xs p-3 hover:bg-bg-surface/30 rounded-2xl transition-all">
+              <div
+                key={flag}
+                className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0 gap-4"
+              >
                 <div>
-                  <h4 className="font-bold text-text-primary capitalize">{flag.replace(/([A-Z])/g, ' $1')}</h4>
-                  <p className="text-[10px] text-text-secondary mt-0.5">Toggle dynamic flag value parameter: {String(isActive)}</p>
+                  <h4 className="font-bold text-slate-900 text-xs">
+                    {flag.replace(/_/g, " ").toUpperCase()}
+                  </h4>
+                  <span className="text-[11px] text-slate-400">Runtime Feature Flag</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleFlagToggle(flag)}
-                  className={`text-3xl transition-colors cursor-pointer ${isActive ? 'text-primary' : 'text-text-secondary/50'}`}
+                  className={`transition-colors cursor-pointer ${
+                    isEnabled ? "text-indigo-600" : "text-slate-300 hover:text-slate-400"
+                  }`}
                 >
-                  {isActive ? <ToggleRight className="w-12 h-12" /> : <ToggleLeft className="w-12 h-12" />}
+                  {isEnabled ? <ToggleRight className="w-9 h-9" /> : <ToggleLeft className="w-9 h-9" />}
                 </button>
               </div>
             );

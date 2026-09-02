@@ -26,8 +26,12 @@ export async function getCompatibilityStats(req: Request, res: Response): Promis
   try {
     const assessmentsSnap = await db.collection('compatibility_assessments').where('isCompleted', '==', true).count().get();
     
-    // For distribution, fetch the latest 500 scores
-    const scoresSnap = await db.collection('matching_scores').orderBy('createdAt', 'desc').limit(500).get();
+    // For distribution, fetch the latest 500 scores. matching_scores docs
+    // (see functions/src/index.ts's scoreData) only ever get `updatedAt`
+    // written, never `createdAt` — orderBy('createdAt') silently excludes
+    // every document missing that field, which made this query always
+    // return zero rows regardless of how much real data existed.
+    const scoresSnap = await db.collection('matching_scores').orderBy('updatedAt', 'desc').limit(500).get();
     
     let totalScore = 0;
     let count = 0;
@@ -41,10 +45,16 @@ export async function getCompatibilityStats(req: Request, res: Response): Promis
     };
 
     scoresSnap.forEach(doc => {
-      const score = doc.data().compatibilityScore || 0;
+      const raw = doc.data().compatibilityScore;
+      // A deal-breaker conflict is stored as compatibilityScore: null (see
+      // functions/src/index.ts) specifically so it's NOT confused with a
+      // genuine 0% match — counting it as 0 here would skew the average and
+      // wrongly inflate the "Below 50" bucket with non-matches.
+      if (raw === null || raw === undefined) return;
+      const score = raw;
       totalScore += score;
       count++;
-      
+
       if (score >= 90) distribution['90-100']++;
       else if (score >= 80) distribution['80-89']++;
       else if (score >= 70) distribution['70-79']++;
@@ -71,7 +81,26 @@ export async function getConnectionRequests(req: Request, res: Response): Promis
       .limit(50)
       .get();
 
-    const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Flutter writes senderId/receiverId (see matching_repository_impl.dart)
+    // with no display name on the doc itself — enrich both sides so the
+    // admin table doesn't fall back to raw UIDs / a "Candidate B" placeholder.
+    const requests = await Promise.all(
+      snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const [senderDoc, receiverDoc] = await Promise.all([
+          data.senderId ? db.collection('users').doc(data.senderId).get() : null,
+          data.receiverId ? db.collection('users').doc(data.receiverId).get() : null,
+        ]);
+        return {
+          id: doc.id,
+          ...data,
+          senderName: senderDoc?.data()?.displayName || '',
+          recipientName: receiverDoc?.data()?.displayName || '',
+          recipientId: data.receiverId || '',
+        };
+      })
+    );
+
     res.json(successResponse(requests));
   } catch (error) {
     console.error('[Matching Admin] getConnectionRequests error:', error);

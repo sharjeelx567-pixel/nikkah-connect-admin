@@ -1,225 +1,243 @@
-'use client';
+﻿"use client";
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
+import { useAuthStore } from "../../store/authStore";
+import { APP_NAME } from "../../config/branding";
+import type { AdminPermission } from "../../types";
 import {
   LayoutDashboard,
   Users,
-  Image,
   ShieldCheck,
-  MessageSquare,
-  AlertTriangle,
+  LifeBuoy,
   CreditCard,
   Bell,
-  FileText,
   Settings,
+  Shield,
   LogOut,
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  LifeBuoy,
-} from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
+  AlertTriangle,
+  ImageIcon,
+  MessageSquare,
+  Activity,
+  HeartHandshake,
+  Radio,
+  FileText
+} from "lucide-react";
 
-interface SidebarItem {
-  name: string;
-  href: string;
-  icon: React.ComponentType<any>;
-  badgeKey?: string;
-  role?: string[];
+interface SidebarProps {
+  pendingCounts?: {
+    photos?: number;
+    verifications?: number;
+    reports?: number;
+    support?: number;
+  };
 }
 
-export default function Sidebar({ pendingCounts }: { pendingCounts?: Record<string, number> }) {
+interface MenuItem {
+  name: string;
+  href: string;
+  icon: any;
+  badgeKey?: "photos" | "verifications" | "reports" | "support";
+  // The permission that page's underlying data actually requires
+  // server-side (see the requirePermission(...) call on that route's main
+  // GET endpoint in nikkah_connect_admin/backend/src/routes). Omit only for
+  // pages every signed-in admin can use regardless of role (just Dashboard).
+  // super_admin bypasses this automatically via hasPermission().
+  permission?: AdminPermission;
+}
+
+interface MenuSection {
+  title: string;
+  items: MenuItem[];
+}
+
+export default function Sidebar({ pendingCounts }: SidebarProps) {
   const pathname = usePathname();
-  const { admin, logout } = useAuthStore();
+  const { admin, logout, hasPermission } = useAuthStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Load state from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    if (saved === 'true') {
-      setIsCollapsed(true);
-    }
-  }, []);
+  const toggleCollapse = () => setIsCollapsed(!isCollapsed);
 
-  const toggleCollapse = () => {
-    setIsCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('sidebar-collapsed', String(next));
-      return next;
-    });
-  };
-
-  const menuItems: SidebarItem[] = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Users', href: '/users', icon: Users },
-    { name: 'Photo Approval', href: '/photos', icon: Image, badgeKey: 'photos' },
-    { name: 'Verification Center', href: '/verification', icon: ShieldCheck, badgeKey: 'verifications' },
-    { name: 'Chat Moderation', href: '/chats', icon: MessageSquare },
-    { name: 'Reports', href: '/reports', icon: AlertTriangle, badgeKey: 'reports' },
-    { name: 'Support', href: '/support', icon: LifeBuoy, badgeKey: 'support' },
-    { name: 'Premium Management', href: '/premium', icon: CreditCard },
-    { name: 'Notifications', href: '/notifications', icon: Bell },
-    { name: 'Content Management', href: '/content', icon: FileText },
-    { name: 'Admin Management', href: '/admins', icon: ShieldCheck, role: ['super_admin'] },
-    { name: 'App Settings', href: '/settings', icon: Settings, role: ['super_admin'] },
+  const menuSections: MenuSection[] = [
+    {
+      title: "Core",
+      items: [
+        { name: "Dashboard", href: "/", icon: LayoutDashboard },
+        { name: "Users", href: "/users", icon: Users, permission: "users.view" },
+      ],
+    },
+    {
+      title: "Moderation & Safety",
+      items: [
+        { name: "Photo Moderation", href: "/photos", icon: ImageIcon, badgeKey: "photos", permission: "photos.view" },
+        { name: "Verification", href: "/verification", icon: ShieldCheck, badgeKey: "verifications", permission: "verification.view" },
+        { name: "Reports Center", href: "/reports", icon: AlertTriangle, badgeKey: "reports", permission: "reports.view" },
+        { name: "Support Helpdesk", href: "/support", icon: LifeBuoy, badgeKey: "support", permission: "support.view" },
+      ],
+    },
+    {
+      title: "Operations",
+      items: [
+        { name: "Connections", href: "/connections", icon: HeartHandshake, permission: "connections.view" },
+        { name: "Chat Moderation", href: "/chats", icon: MessageSquare, permission: "chat_moderation.view" },
+        { name: "Premium Plans", href: "/premium", icon: CreditCard, permission: "subscriptions.view" },
+        { name: "Notifications", href: "/notifications", icon: Bell, permission: "notifications.view" },
+        { name: "App Content", href: "/content", icon: FileText, permission: "content.view" },
+      ],
+    },
+    {
+      title: "Administration",
+      items: [
+        { name: "Audit Logs", href: "/audit-logs", icon: Activity, permission: "audit_logs.view" },
+        { name: "System Health", href: "/monitoring", icon: Radio, permission: "audit_logs.view" },
+        { name: "Admin Team", href: "/admins", icon: Shield, permission: "admins.view" },
+        { name: "Settings", href: "/settings", icon: Settings, permission: "settings.view" },
+      ],
+    },
   ];
-
-  const filteredMenuItems = menuItems.filter(item => {
-    if (!item.role) return true;
-    return admin && item.role.includes(admin.role);
-  });
 
   return (
     <motion.aside
-      animate={{ width: isCollapsed ? 80 : 288 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="border-r border-primary/10 bg-white flex flex-col h-screen sticky top-0 flex-shrink-0 z-30"
+      animate={{ width: isCollapsed ? 80 : 270 }}
+      transition={{ type: "spring", stiffness: 350, damping: 32 }}
+      className="border-r border-slate-200/80 bg-white flex flex-col h-screen sticky top-0 flex-shrink-0 z-30 shadow-xs"
     >
-      {/* Header section with Recode-inspired pointing arrow banner */}
-      <div className="h-24 flex items-center relative pr-4">
-        <AnimatePresence mode="wait">
-          {!isCollapsed ? (
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="w-[90%] py-4 pl-6 bg-gradient-to-r from-primary to-primary-light text-white recode-arrow shadow-neon-primary relative flex items-center justify-between"
-            >
-              <div>
-                <span className="font-extrabold font-display tracking-tight text-lg">
-                  RECODE
-                </span>
-                <span className="block text-[8px] font-bold text-accent tracking-widest uppercase">
-                  NikkahConnect
-                </span>
-              </div>
-              <Sparkles className="w-5 h-5 text-accent animate-pulse mr-8" />
-            </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className="w-12 h-12 mx-auto rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center shadow-neon-primary"
-            >
-              <span className="text-sm font-black text-white">NC</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* Brand Header */}
+      <div className="h-18 px-5 border-b border-slate-100 flex items-center justify-between">
+        {!isCollapsed ? (
+          <Link href="/" className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-sm shadow-indigo-200 flex-shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <span className="font-extrabold font-display tracking-tight text-slate-900 text-base leading-tight block">
+                {APP_NAME}
+              </span>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest block -mt-0.5">
+                Admin Console
+              </span>
+            </div>
+          </Link>
+        ) : (
+          <Link href="/" className="mx-auto">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-sm">
+              <Sparkles className="w-5 h-5" />
+            </div>
+          </Link>
+        )}
+
+        <button
+          onClick={toggleCollapse}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors hidden md:flex items-center justify-center"
+          title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
       </div>
 
-      {/* Main navigation list */}
-      <nav className="flex-1 px-4 py-4 overflow-y-auto space-y-[4px] custom-scrollbar">
-        {filteredMenuItems.map((item) => {
-          const isActive = pathname === item.href;
-          const count = pendingCounts && item.badgeKey ? pendingCounts[item.badgeKey] : 0;
+      {/* Navigation List */}
+      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-5 custom-scrollbar">
+        {menuSections.map((section, sIdx) => {
+          const visibleItems = section.items.filter((item) => {
+            if (!item.permission) return true;
+            return hasPermission(item.permission);
+          });
+
+          if (visibleItems.length === 0) return null;
 
           return (
-            <Link key={item.href} href={item.href} className="relative block group">
-              <span
-                className={`flex items-center justify-between px-3.5 py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all cursor-pointer ${
-                  isActive
-                    ? 'text-primary bg-primary/10 border border-primary/15 shadow-sm'
-                    : 'text-[#8B88A0] hover:text-text-primary hover:bg-primary/5'
-                }`}
-              >
-                <div className="flex items-center gap-3.5">
-                  <item.icon className={`w-[18px] h-[18px] flex-shrink-0 transition-all duration-200 group-hover:scale-105 ${isActive ? 'text-primary' : 'text-[#8B88A0] group-hover:text-text-primary'}`} />
-                  
-                  <AnimatePresence initial={false}>
-                    {!isCollapsed && (
-                      <motion.span
-                        initial={{ opacity: 0, width: 0 }}
-                        animate={{ opacity: 1, width: 'auto' }}
-                        exit={{ opacity: 0, width: 0 }}
-                        className="whitespace-nowrap text-left"
-                      >
+            <div key={sIdx} className="space-y-1">
+              {!isCollapsed && (
+                <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  {section.title}
+                </p>
+              )}
+
+              {visibleItems.map((item) => {
+                const isActive = pathname === item.href;
+                const count = (pendingCounts && item.badgeKey && pendingCounts[item.badgeKey]) ? (pendingCounts[item.badgeKey] as number) : 0;
+                const IconComponent = item.icon;
+
+                return (
+                  <Link key={item.href} href={item.href} className="relative block group">
+                    <span
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        isActive
+                          ? "bg-indigo-50/90 text-indigo-600 font-bold shadow-xs"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <IconComponent
+                          className={`w-4 h-4 flex-shrink-0 transition-colors ${
+                            isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-700"
+                          }`}
+                        />
+                        {!isCollapsed && (
+                          <span className="truncate">{item.name}</span>
+                        )}
+                      </div>
+
+                      {count > 0 && (
+                        <span
+                          className={`flex items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-xs ${
+                            isCollapsed ? "w-2 h-2 p-0" : "px-2 py-0.5 min-w-[20px]"
+                          }`}
+                        >
+                          {!isCollapsed && count}
+                        </span>
+                      )}
+                    </span>
+
+                    {/* Tooltip for collapsed mode */}
+                    {isCollapsed && (
+                      <div className="absolute left-16 top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-md whitespace-nowrap">
                         {item.name}
-                      </motion.span>
+                      </div>
                     )}
-                  </AnimatePresence>
-                </div>
-
-                {count > 0 && (
-                  <span className={`flex items-center justify-center rounded-full bg-gradient-to-r from-secondary to-secondary-dark text-[8px] font-extrabold text-white shadow-md ${
-                    isCollapsed 
-                      ? 'absolute top-1 right-1 w-3.5 h-3.5' 
-                      : 'min-w-5 h-5 px-1.5'
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </span>
-
-              {/* Tooltip for collapsed mode */}
-              {isCollapsed && (
-                <div className="absolute left-20 top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 bg-white border border-primary/10 text-text-primary text-[9px] font-bold tracking-widest uppercase rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-neon-primary whitespace-nowrap">
-                  {item.name}
-                </div>
-              )}
-
-              {isActive && (
-                <motion.div
-                  layoutId="active-sidebar-indicator"
-                  className="absolute left-0 top-[20%] bottom-[20%] w-[3px] bg-primary-light rounded-r"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
-            </Link>
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
 
-      {/* Admin Profile Details and Collapse Button footer */}
-      <div className="p-4 border-t border-primary/10 bg-white/2 space-y-3">
-        <AnimatePresence initial={false}>
-          {!isCollapsed && (
-            <Link href="/profile" className="block">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/15 rounded-2xl shadow-sm hover:bg-primary/10 transition-colors cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0">
-                  {admin?.displayName?.charAt(0) || 'A'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-xs font-bold text-text-primary truncate">
-                    {admin?.displayName || 'Admin'}
-                  </h4>
-                  <span className="text-[9px] text-text-secondary font-bold tracking-wider uppercase block">
-                    {admin?.role?.replace('_', ' ') || 'Moderator'}
-                  </span>
-                </div>
-              </motion.div>
-            </Link>
-          )}
-        </AnimatePresence>
+      {/* Footer Profile & Logout */}
+      <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+        {!isCollapsed && (
+          <div className="flex items-center gap-3 p-2 bg-white rounded-xl border border-slate-200/70 shadow-xs">
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+              {admin?.displayName?.charAt(0) || "A"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h4 className="text-xs font-bold text-slate-800 truncate">
+                {admin?.displayName || "Admin User"}
+              </h4>
+              <span className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider block">
+                {admin?.role?.replace("_", " ") || "Administrator"}
+              </span>
+            </div>
+          </div>
+        )}
 
-        {/* Action controls row */}
-        <div className="flex items-center justify-between gap-2">
-          <button
-            onClick={logout}
-            className={`flex items-center gap-3 py-2.5 px-3.5 text-[10px] uppercase font-bold tracking-widest text-[#8B88A0] hover:text-error hover:bg-error/5 rounded-xl transition-all cursor-pointer ${
-              isCollapsed ? 'mx-auto justify-center w-full' : 'flex-1'
-            }`}
-          >
-            <LogOut className="w-[18px] h-[18px] flex-shrink-0" />
-            {!isCollapsed && <span>Sign Out</span>}
-          </button>
-
-          <button
-            onClick={toggleCollapse}
-            className="p-2 hover:bg-slate-100 border border-primary/10 rounded-xl text-[#8B88A0] hover:text-text-primary transition-colors cursor-pointer hidden md:block"
-          >
-            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
-        </div>
+        <button
+          onClick={logout}
+          className={`flex items-center gap-2.5 py-2 px-3 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50/80 rounded-xl transition-all w-full cursor-pointer ${
+            isCollapsed ? "justify-center" : ""
+          }`}
+          title="Sign Out"
+        >
+          <LogOut className="w-4 h-4 flex-shrink-0" />
+          {!isCollapsed && <span>Sign Out</span>}
+        </button>
       </div>
     </motion.aside>
   );
 }
+

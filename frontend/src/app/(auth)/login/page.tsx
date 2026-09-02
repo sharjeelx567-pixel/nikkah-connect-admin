@@ -1,233 +1,324 @@
-﻿'use client';
+﻿"use client";
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useAuthStore } from '../../../store/authStore';
-import { Eye, EyeOff, Lock, Mail, ShieldAlert, CheckCircle2, ChevronDown } from 'lucide-react';
-import api from '../../../services/api';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { useAuthStore } from "../../../store/authStore";
+import { APP_NAME } from "../../../config/branding";
+import type { AdminRole } from "../../../types";
+import {
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Sparkles,
+  ShieldAlert,
+  ChevronDown,
+  CheckCircle2,
+  Info
+} from "lucide-react";
+
+// Same 7 canonical roles as everywhere else in the console (backend
+// AdminRole, Admin Settings -> Add Admin/Staff, role badges).
+//
+// This selection can only ever REJECT a login, never grant one: after the
+// server authenticates the account and returns its real (DB-stored) role,
+// we compare it to this selection. A mismatch signs the just-established
+// session back out immediately and shows an error — it never changes what
+// role the account actually gets. This is a client-side sanity check
+// against picking the wrong account/expectation, not an authorization
+// mechanism; the server remains the sole source of truth for the role
+// actually used for every permission check afterward.
+const ROLE_HINTS: { id: AdminRole; label: string }[] = [
+  { id: "super_admin", label: "Super Admin" },
+  { id: "admin", label: "Admin" },
+  { id: "moderator", label: "Moderator" },
+  { id: "verification_staff", label: "Verification Staff" },
+  { id: "support_staff", label: "Support Staff" },
+  { id: "content_moderator", label: "Content Moderator" },
+  { id: "analyst", label: "Analyst" },
+];
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading, error } = useAuthStore();
-  
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('super_admin');
-  const [rememberMe, setRememberMe] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [localError, setLocalError] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { login, verifyTwoFactor, cancelTwoFactor, challengeToken, isLoading, error, clearError, admin, logout } = useAuthStore();
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.replace('/');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  // See ROLE_HINTS above — this can reject a login but never grant a role.
+  const [roleHint, setRoleHint] = useState<AdminRole>("super_admin");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [localError, setLocalError] = useState("");
+  // Separate from localError/error on purpose: those are genuine failures
+  // (wrong password, bad 2FA code) and stay styled as hard errors. A role
+  // hint mismatch isn't that — the login itself succeeded — so it gets its
+  // own softer, non-alarming presentation instead of the red error box.
+  const [roleMismatchNotice, setRoleMismatchNotice] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+
+  // Runs AFTER the server has already authenticated the account and a real
+  // session/token exists — this can only discard that session, never
+  // create or upgrade one. useAuthStore.getState() (not the destructured
+  // `admin`) is used so we read the value the store was just set to in
+  // this same tick, not a stale one from before the login/2FA call.
+  //
+  // The message deliberately does NOT reveal what the account's actual role
+  // is — doing so would let someone who doesn't know it simply try every
+  // option in the dropdown until the account confirms its own role back to
+  // them, leaking that information for free. It's kept fully generic.
+  const enforceRoleSelectionMatches = (): boolean => {
+    const actualRole = useAuthStore.getState().admin?.role;
+    if (actualRole && actualRole !== roleHint) {
+      logout();
+      setRoleMismatchNotice(
+        "The selected role doesn't match this account. Select the correct role and sign in again."
+      );
+      return false;
     }
-  }, [isAuthenticated, router]);
+    return true;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError('');
+    if (clearError) clearError();
+    setLocalError("");
+    setRoleMismatchNotice("");
 
-    if (!email || !password) {
-      setLocalError('Please fill in all fields.');
+    if (!email.trim() || !password) {
+      setLocalError("Please provide both email and password.");
       return;
     }
 
-    setIsProcessing(true);
+    try {
+      setIsProcessing(true);
+      const result = await login(email.trim(), password, rememberMe);
+      if (result.status === "success") {
+        if (enforceRoleSelectionMatches()) {
+          router.replace("/");
+        }
+      }
+      // "2fa_required" falls through: the store now holds a challenge token and
+      // the form below switches to the code step. No session exists yet.
+    } catch (err: any) {
+      // Handled in store
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleVerifyTwoFactor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (clearError) clearError();
+    setLocalError("");
+    setRoleMismatchNotice("");
+
+    const code = twoFactorCode.replace(/\s/g, "");
+    if (code.length < 6) {
+      setLocalError("Enter the 6-digit code from your authenticator app.");
+      return;
+    }
 
     try {
-
-      // Proceed to login via Firebase
-      const success = await login(email, password, rememberMe);
-      if (success) {
-        router.replace('/');
+      setIsProcessing(true);
+      const ok = await verifyTwoFactor(code, rememberMe);
+      if (ok) {
+        setTwoFactorCode("");
+        if (enforceRoleSelectionMatches()) {
+          router.replace("/");
+        }
       }
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const roles = [
-    { id: 'super_admin', label: 'Super Admin' },
-    { id: 'admin', label: 'Administrator' },
-    { id: 'moderator', label: 'Content Moderator' },
-    { id: 'support_agent', label: 'Support Agent' },
-    { id: 'verification_officer', label: 'Verification Officer' },
-    { id: 'content_manager', label: 'Content Manager' },
-    { id: 'finance_manager', label: 'Finance Manager' }
-  ];
+  const handleBackToPassword = () => {
+    cancelTwoFactor();
+    setTwoFactorCode("");
+    setLocalError("");
+    setRoleMismatchNotice("");
+    setPassword("");
+  };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-slate-50 overflow-hidden px-4 py-8 font-sans">
-      {/* Immersive background effects */}
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-slate-50 to-slate-100 pointer-events-none" />
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/20 blur-[120px] pointer-events-none mix-blend-multiply" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-secondary/20 blur-[120px] pointer-events-none mix-blend-multiply" />
-
-      {/* Grid pattern overlay */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] pointer-events-none mix-blend-overlay" />
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+      {/* Subtle background ambient glow */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[550px] bg-indigo-500/8 rounded-full blur-3xl pointer-events-none" />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-[460px] z-10"
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="w-full max-w-md relative z-10"
       >
+        {/* Brand Header */}
         <div className="text-center mb-8">
-          <motion.div 
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.2 }}
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary via-primary to-secondary p-[1px] mb-6 shadow-luxury"
-          >
-            <div className="w-full h-full bg-white rounded-[15px] flex items-center justify-center overflow-hidden relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
-              <span className="text-3xl font-extrabold bg-gradient-to-br from-primary to-secondary bg-clip-text text-transparent relative z-10">N</span>
-            </div>
-          </motion.div>
-          
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
-            Welcome Back
+          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+            <Sparkles className="w-7 h-7" />
+          </div>
+
+          <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">
+            {APP_NAME}
           </h1>
-          <p className="text-slate-500 text-sm font-medium">
-            Sign in to the NikkahConnect Management Portal
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            Enterprise Administration & Safety Console
           </p>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-2xl rounded-[24px] p-8 shadow-2xl shadow-slate-200/50 border border-slate-200/60 relative">
-          <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
-
-          <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Login Card */}
+        <div className="bg-white rounded-3xl p-8 shadow-xl shadow-slate-200/60 border border-slate-200/80">
+          <form onSubmit={challengeToken ? handleVerifyTwoFactor : handleSubmit} className="space-y-4">
             <AnimatePresence mode="wait">
               {(error || localError) && (
                 <motion.div
-                  initial={{ opacity: 0, y: -10, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto' }}
-                  exit={{ opacity: 0, y: -10, height: 0 }}
-                  className="flex items-center gap-3 p-4 bg-red-50 text-red-600 rounded-2xl text-sm border border-red-100"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="flex items-center gap-2.5 p-3.5 bg-rose-50 text-rose-700 rounded-2xl text-xs border border-rose-200 font-medium"
                 >
-                  <ShieldAlert className="w-5 h-5 flex-shrink-0" />
-                  <span className="font-medium">{localError || error}</span>
+                  <ShieldAlert className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>{localError || error}</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">
-                Portal Role
-              </label>
-              <div className="relative group">
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full h-[52px] pl-4 pr-10 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 text-slate-900 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-white transition-all appearance-none cursor-pointer font-semibold shadow-sm"
+            <AnimatePresence mode="wait">
+              {roleMismatchNotice && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="flex items-center gap-2.5 p-3.5 bg-slate-50 text-slate-600 rounded-2xl text-xs border border-slate-200 font-medium"
                 >
-                  {roles.map(r => (
-                    <option key={r.id} value={r.id}>{r.label}</option>
-                  ))}
-                </select>
-                <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-slate-400 group-hover:text-slate-600 transition-colors">
-                  <ChevronDown className="w-5 h-5" />
+                  <Info className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                  <span>{roleMismatchNotice}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {!challengeToken && (
+              <>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  Staff Role
+                </label>
+                <div className="relative">
+                  <select
+                    value={roleHint}
+                    onChange={(e) => setRoleHint(e.target.value as AdminRole)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 appearance-none cursor-pointer"
+                  >
+                    {ROLE_HINTS.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                  Must match the role assigned to this account in Admin Settings, or sign-in will be rejected.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Work Email
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@nikkahconnect.com"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400"
+                  />
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">
-                Work Email
-              </label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none">
-                  <Mail className="w-5 h-5" />
-                </div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your work email"
-                  className="w-full h-[52px] pl-11 pr-4 bg-slate-50 hover:bg-slate-100 focus:bg-white rounded-2xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center ml-1">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Password
                 </label>
-                <a
-                  href="/forgot-password"
-                  className="text-xs text-primary hover:text-primary-dark font-bold transition-colors"
-                >
-                  Forgot password?
-                </a>
-              </div>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400 group-focus-within:text-primary transition-colors pointer-events-none">
-                  <Lock className="w-5 h-5" />
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
-                  className="w-full h-[52px] pl-11 pr-11 bg-slate-50 hover:bg-slate-100 focus:bg-white rounded-2xl border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
-                />
+              </div>
+              </>
+            )}
+
+            {challengeToken && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2.5 p-3.5 bg-indigo-50 text-indigo-800 rounded-2xl text-xs border border-indigo-200">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Password accepted. Enter the 6-digit code from your authenticator app to
+                    finish signing in. You can also use one of your backup codes.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                    Authentication Code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="text"
+                    autoFocus
+                    autoComplete="one-time-code"
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value)}
+                    placeholder="123456"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-bold tracking-[0.4em] text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  onClick={handleBackToPassword}
+                  className="w-full text-[11px] font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  Use a different account
                 </button>
               </div>
-            </div>
-
-            <div className="flex items-center pt-2">
-              <label className="flex items-center cursor-pointer group">
-                <div className="relative flex items-center justify-center w-5 h-5 rounded border border-slate-300 bg-white group-hover:border-primary transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="sr-only"
-                  />
-                  <AnimatePresence>
-                    {rememberMe && (
-                      <motion.div
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        exit={{ scale: 0 }}
-                        className="absolute inset-0 bg-primary flex items-center justify-center rounded-[3px]"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-                <span className="ml-3 text-sm text-slate-500 group-hover:text-slate-700 transition-colors font-bold">
-                  Remember my device
-                </span>
-              </label>
-            </div>
+            )}
 
             <button
               type="submit"
               disabled={isLoading || isProcessing}
-              className="w-full h-[52px] mt-4 bg-gradient-to-r from-primary to-secondary hover:from-primary-dark hover:to-primary text-white rounded-2xl font-bold text-[15px] shadow-luxury hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {(isLoading || isProcessing) ? (
-                <div className="w-5 h-5 border-[2.5px] border-white/30 border-t-white rounded-full animate-spin" />
+              {isLoading || isProcessing ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : challengeToken ? (
+                "Verify & Continue"
               ) : (
-                'Secure Login'
+                "Authenticate & Sign In"
               )}
             </button>
           </form>
         </div>
-        
-        <p className="text-center text-slate-400 text-xs font-bold mt-8">
-          Protected by Enterprise Grade Security
+
+        <p className="text-center text-slate-400 text-xs font-medium mt-6">
+          Encrypted 256-Bit SSL Administrative Access
         </p>
       </motion.div>
     </div>

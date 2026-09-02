@@ -4,6 +4,49 @@ import { db } from '../config/firebase';
 import { successResponse, errorResponse, serverTimestamp } from '../utils/helpers';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { r2Client, r2Buckets } from '../config/r2';
+
+// â”€â”€â”€ Private Document URL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// The Flutter app (upload_service.dart / R2UploadService.uploadMedia) never
+// stores a plain public URL for verification documents — only an opaque R2
+// object key (e.g. "users/<uid>/<timestamp>.jpg"). The admin CNIC/full
+// verification queues were built assuming cnicFrontUrl/cnicBackUrl were
+// directly renderable <img src> URLs, so every review card showed a broken
+// image instead of the document. This mints a 5-minute signed GET on demand,
+// mirroring the same private-document pattern Cloud Functions already uses
+// for the app itself (getPrivateDocumentUrl, functions/src/index.ts) — same
+// idea, this backend's own R2 credentials instead of going through Firebase.
+export async function getDocumentUrl(req: Request, res: Response): Promise<void> {
+  try {
+    const { key } = req.query as { key?: string };
+    if (!key) {
+      res.status(400).json(errorResponse('Missing key query parameter'));
+      return;
+    }
+    // Reject anything that isn't a plain users/<uid>/<file> key — refuses
+    // traversal, absolute URLs, or a key naming a bucket other than intended.
+    if (!/^users\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(key)) {
+      res.status(400).json(errorResponse('Malformed key'));
+      return;
+    }
+    const bucket = r2Buckets.verification.bucket;
+    if (!bucket) {
+      res.status(500).json(errorResponse('R2_VERIFICATION_BUCKET is not configured'));
+      return;
+    }
+    const url = await getSignedUrl(
+      r2Client,
+      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      { expiresIn: 300 }
+    );
+    res.json(successResponse({ url, expiresInSeconds: 300 }));
+  } catch (error) {
+    console.error('[Verification] getDocumentUrl error:', error);
+    res.status(500).json(errorResponse('Failed to generate document URL', error));
+  }
+}
 
 // â”€â”€â”€ Shared Notification Helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function submitVerification(req: Request, res: Response): Promise<void> {
@@ -72,33 +115,72 @@ async function sendPush(uid: string, title: string, body: string, extraData?: Re
 // â”€â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function getVerificationStats(req: Request, res: Response): Promise<void> {
   try {
-    const [pendingIdentity, pendingFull, approvedToday, rejectedToday, totalVerified] =
-      await Promise.all([
-        db.collection('verification_requests')
-          .where('type', '==', 'identity')
-          .where('status', '==', 'pending')
-          .count().get(),
-        db.collection('verification_requests')
-          .where('type', '==', 'full')
-          .where('status', 'in', ['payment_pending', 'waiting_schedule', 'scheduled', 'meeting_done'])
-          .count().get(),
-        db.collection('verification_requests')
-          .where('status', '==', 'approved')
-          .count().get(),
-        db.collection('verification_requests')
-          .where('status', '==', 'rejected')
-          .count().get(),
-        db.collection('users')
-          .where('identityVerified', '==', true)
-          .count().get(),
-      ]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // approvedToday/rejectedToday previously counted ALL-TIME approved/rejected
+    // verification_requests (no date filter despite the "Today" label), and
+    // were entirely blind to voice verification (which lives on the `users`
+    // collection, not `verification_requests`) — so approving/rejecting a
+    // voice item on the Voice tab never moved any of these numbers.
+    const [
+      pendingIdentity, pendingFull,
+      identityApprovedToday, identityRejectedToday,
+      fullApprovedToday, fullRejectedToday,
+      voiceApprovedTodaySnap, voiceRejectedTodaySnap,
+      identityVerifiedSnap, voiceVerifiedSnap,
+    ] = await Promise.all([
+      db.collection('verification_requests')
+        .where('type', '==', 'identity')
+        .where('status', '==', 'pending')
+        .count().get(),
+      db.collection('verification_requests')
+        .where('type', '==', 'full')
+        .where('status', 'in', ['payment_pending', 'waiting_schedule', 'scheduled', 'meeting_done'])
+        .count().get(),
+      db.collection('verification_requests')
+        .where('type', '==', 'identity')
+        .where('status', '==', 'approved')
+        .where('updatedAt', '>=', today)
+        .count().get(),
+      db.collection('verification_requests')
+        .where('type', '==', 'identity')
+        .where('status', '==', 'rejected')
+        .where('updatedAt', '>=', today)
+        .count().get(),
+      db.collection('verification_requests')
+        .where('type', '==', 'full')
+        .where('status', '==', 'approved')
+        .where('updatedAt', '>=', today)
+        .count().get(),
+      db.collection('verification_requests')
+        .where('type', '==', 'full')
+        .where('status', '==', 'rejected')
+        .where('updatedAt', '>=', today)
+        .count().get(),
+      db.collection('users')
+        .where('voiceVerificationStatus', '==', 'approved')
+        .where('voiceVerifiedAt', '>=', today)
+        .count().get(),
+      db.collection('users')
+        .where('voiceVerificationStatus', '==', 'rejected')
+        .where('voiceRejectedAt', '>=', today)
+        .count().get(),
+      db.collection('users')
+        .where('identityVerified', '==', true)
+        .count().get(),
+      db.collection('users')
+        .where('genderVerified', '==', true)
+        .count().get(),
+    ]);
 
     res.json(successResponse({
       pendingIdentity: pendingIdentity.data().count,
       pendingFull: pendingFull.data().count,
-      approvedToday: approvedToday.data().count,
-      rejectedToday: rejectedToday.data().count,
-      totalIdentityVerified: totalVerified.data().count,
+      approvedToday: identityApprovedToday.data().count + fullApprovedToday.data().count + voiceApprovedTodaySnap.data().count,
+      rejectedToday: identityRejectedToday.data().count + fullRejectedToday.data().count + voiceRejectedTodaySnap.data().count,
+      totalIdentityVerified: identityVerifiedSnap.data().count,
+      totalVoiceVerified: voiceVerifiedSnap.data().count,
     }));
   } catch (error) {
     console.error('[Verification] getStats error:', error);
@@ -218,7 +300,7 @@ export async function approveIdentity(req: Request, res: Response): Promise<void
 
     await sendPush(
       userId,
-      'âœ… Identity Verified!',
+      '✅ Identity Verified!',
       'Your identity has been verified. Your profile now shows the Identity Verified badge.',
       { type: 'verification', verificationStatus: 'approved' }
     );
@@ -266,7 +348,7 @@ export async function rejectIdentity(req: Request, res: Response): Promise<void>
 
     await sendPush(
       userId,
-      'âŒ Identity Verification Rejected',
+      '❌ Identity Verification Rejected',
       `Your documents were rejected. Reason: ${reason}. Please upload again.`,
       { type: 'verification', verificationStatus: 'rejected' }
     );
@@ -402,7 +484,7 @@ export async function rejectFullVerification(req: Request, res: Response): Promi
 
     await sendPush(
       userId,
-      'âŒ Full Verification Rejected',
+      '❌ Full Verification Rejected',
       `Your Full Verification was not approved. Reason: ${reason}`,
       { type: 'verification', verificationStatus: 'rejected' }
     );
@@ -435,3 +517,150 @@ export async function approveHumanVerification(req: Request, res: Response): Pro
   return approveFullVerification(req, res);
 }
 
+
+// ── Voice Verification Queue & Review ────────────────────────────────────────
+
+export async function getVoiceVerificationQueue(_req: Request, res: Response): Promise<void> {
+  try {
+    const snapshot = await db.collection('users')
+      .where('voiceIntroUrl', '!=', null)
+      .limit(100)
+      .get();
+
+    const queue: any[] = [];
+
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      const status = data.voiceVerificationStatus || 'pending';
+      // Include pending or recent voice submissions
+      queue.push({
+        uid: doc.id,
+        displayName: data.displayName || 'Unknown Candidate',
+        email: data.email || '',
+        gender: data.gender || 'Not specified',
+        city: data.city || data.permanentCity || data.currentCity || 'Pakistan',
+        profession: data.profession || 'Not specified',
+        profileImage: data.profileImage || null,
+        voiceIntroUrl: data.voiceIntroUrl,
+        voiceVerificationStatus: status,
+        voiceRejectionReason: data.voiceRejectionReason || null,
+        genderVerified: Boolean(data.genderVerified),
+        isVerified: Boolean(data.isVerified),
+        createdAt: data.createdAt || null,
+        submittedAt: data.updatedAt || data.createdAt || null,
+      });
+    });
+
+    // Sort pending items first
+    queue.sort((a, b) => {
+      if (a.voiceVerificationStatus === 'pending' && b.voiceVerificationStatus !== 'pending') return -1;
+      if (a.voiceVerificationStatus !== 'pending' && b.voiceVerificationStatus === 'pending') return 1;
+      return 0;
+    });
+
+    res.json(successResponse(queue));
+  } catch (error) {
+    console.error('[Verification] getVoiceVerificationQueue error:', error);
+    res.status(500).json(errorResponse('Failed to fetch voice verification queue', error));
+  }
+}
+
+export async function approveVoiceVerification(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params; // target user UID
+
+    const userDoc = await db.collection('users').doc(id).get();
+    if (!userDoc.exists) {
+      res.status(404).json(errorResponse('User not found'));
+      return;
+    }
+
+    const userData = userDoc.data() || {};
+
+    await db.collection('users').doc(id).update({
+      voiceVerificationStatus: 'approved',
+      genderVerified: true,
+      isVerified: true,
+      voiceVerifiedAt: serverTimestamp(),
+      voiceVerifiedBy: req.admin?.email || 'admin',
+      voiceRejectionReason: FieldValue.delete(),
+    });
+
+    // Send push notification
+    await sendPush(
+      id,
+      'Voice & Gender Verification Approved! 🎙️✅',
+      'Assalamu Alaikum! Your voice introduction has been verified by our moderation team. Your Verified Badge is now active.',
+      { type: 'verification_voice_approved' }
+    );
+
+    // Audit Log
+    const { logAction } = require('./audit.controller');
+    if (logAction && req.admin) {
+      await logAction(
+        req.admin.uid,
+        req.admin.email,
+        'voice_verification_approved',
+        id,
+        'user',
+        { gender: userData.gender, displayName: userData.displayName },
+        req.ip || ''
+      );
+    }
+
+    res.json(successResponse(null, 'Voice verification approved and verification badge granted.'));
+  } catch (error) {
+    console.error('[Verification] approveVoiceVerification error:', error);
+    res.status(500).json(errorResponse('Failed to approve voice verification', error));
+  }
+}
+
+export async function rejectVoiceVerification(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const userDoc = await db.collection('users').doc(id).get();
+    if (!userDoc.exists) {
+      res.status(404).json(errorResponse('User not found'));
+      return;
+    }
+
+    const rejectionReason = reason || 'Voice recording did not meet verification guidelines or was unclear.';
+
+    await db.collection('users').doc(id).update({
+      voiceVerificationStatus: 'rejected',
+      voiceRejectionReason: rejectionReason,
+      genderVerified: false,
+      voiceRejectedAt: serverTimestamp(),
+      voiceRejectedBy: req.admin?.email || 'admin',
+    });
+
+    // Send push notification
+    await sendPush(
+      id,
+      'Voice Verification Update',
+      `Your voice verification could not be approved. Reason: ${rejectionReason}. You may re-record in your profile settings.`,
+      { type: 'verification_voice_rejected', reason: rejectionReason }
+    );
+
+    // Audit Log
+    const { logAction } = require('./audit.controller');
+    if (logAction && req.admin) {
+      await logAction(
+        req.admin.uid,
+        req.admin.email,
+        'voice_verification_rejected',
+        id,
+        'user',
+        { reason: rejectionReason },
+        req.ip || ''
+      );
+    }
+
+    res.json(successResponse(null, 'Voice verification rejected successfully.'));
+  } catch (error) {
+    console.error('[Verification] rejectVoiceVerification error:', error);
+    res.status(500).json(errorResponse('Failed to reject voice verification', error));
+  }
+}

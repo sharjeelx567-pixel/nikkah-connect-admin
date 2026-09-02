@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Outfit } from 'next/font/google';
 import './globals.css';
 import Providers from '../components/Providers';
+import { APP_NAME } from '../config/branding';
 
 const sansFont = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -16,8 +17,8 @@ const displayFont = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: 'NikkahConnect — Enterprise Admin Panel',
-  description: 'Manage users, photos, verifications, and platform settings for NikkahConnect in real-time.',
+  title: `${APP_NAME} — Enterprise Admin Panel`,
+  description: `Manage users, photos, verifications, and platform settings for ${APP_NAME} in real-time.`,
 };
 
 export default function RootLayout({

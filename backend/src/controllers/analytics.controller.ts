@@ -14,6 +14,7 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
     const [
       totalSnap, premiumSnap, pendingPhotosSnap,
       pendingVerifSnap, pendingReportsSnap, bannedSnap, todaySnap,
+      completedTxSnap,
     ] = await Promise.all([
       db.collection('users').count().get(),
       db.collection('users').where('isPremium', '==', true).count().get(),
@@ -22,7 +23,14 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
       db.collection('support_tickets').where('status', 'in', ['open', 'Open']).count().get(),
       db.collection('users').where('isBanned', '==', true).count().get(),
       db.collection('users').where('createdAt', '>=', todayTimestamp).count().get(),
+      // Same "sum" approach as payments.controller.ts's getSubscriptionMetrics
+      // (30-day revenue) — this one is all-time, matching the dashboard's
+      // "Revenue Generated" card, which previously always showed PKR 0
+      // because DashboardStats never included a totalRevenue field at all.
+      db.collection('transactions').where('status', '==', 'completed').get(),
     ]);
+
+    const totalRevenue = completedTxSnap.docs.reduce((sum, doc) => sum + (doc.data().amount || 0), 0);
 
     const stats: DashboardStats = {
       totalUsers: totalSnap.data().count,
@@ -33,6 +41,7 @@ export async function getDashboardStats(req: Request, res: Response): Promise<vo
       pendingVerifications: pendingVerifSnap.data().count,
       pendingReports: pendingReportsSnap.data().count,
       bannedUsers: bannedSnap.data().count,
+      totalRevenue,
     };
 
     res.json(successResponse(stats));

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import authRoutes from './auth.routes';
 import usersRoutes from './users.routes';
 import photosRoutes from './photos.routes';
@@ -12,6 +12,11 @@ import paymentsRoutes from './payments.routes';
 import supportRoutes from './support.routes';
 import adminsRoutes from './admins.routes';
 import adminAlertsRoutes from './admin-alerts.routes';
+import auditRoutes from './audit.routes';
+import monitoringRoutes from './monitoring.routes';
+import contentRoutes from './content.routes';
+import familyRoutes from './family.routes';
+import chatModerationRoutes from './chatModeration.routes';
 
 const router = Router();
 
@@ -28,5 +33,10 @@ router.use('/payments', paymentsRoutes);
 router.use('/support', supportRoutes);
 router.use('/admins', adminsRoutes);
 router.use('/admin-alerts', adminAlertsRoutes);
+router.use('/audit-logs', auditRoutes);
+router.use('/monitoring', monitoringRoutes);
+router.use('/content', contentRoutes);
+router.use('/family', familyRoutes);
+router.use('/chat-moderation', chatModerationRoutes);
 
 export default router;

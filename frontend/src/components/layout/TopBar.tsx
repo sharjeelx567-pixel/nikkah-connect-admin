@@ -1,10 +1,11 @@
-'use client';
+﻿"use client";
 
-import React, { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { ShieldCheck, Bell } from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
-import api from '../../services/api';
+import React, { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ShieldCheck, Bell, Sparkles } from "lucide-react";
+import { useAuthStore } from "../../store/authStore";
+import api from "../../services/api";
+import { APP_NAME } from "../../config/branding";
 
 export default function TopBar() {
   const pathname = usePathname();
@@ -15,90 +16,93 @@ export default function TopBar() {
   useEffect(() => {
     const fetchUnread = async () => {
       try {
-        const res = await api.get('/admin-alerts/unread-count');
+        const res = await api.get("/admin-alerts/unread-count");
         if (res.data?.count !== undefined) {
           setUnreadCount(res.data.count);
         }
-      } catch (err) {
-        // ignore errors
-      }
+      } catch (err) {}
     };
     fetchUnread();
-    // Poll every 30 seconds instead of websocket to avoid firestore rules
     const interval = setInterval(fetchUnread, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const getPageTitle = () => {
+  const getPageInfo = () => {
     switch (pathname) {
-      case '/':
-        return 'System Overview';
-      case '/users':
-        return 'User Management';
-      case '/photos':
-        return 'Photo Moderation';
-      case '/verification':
-        return 'Verification Center';
-      case '/chats':
-        return 'Chat Moderation';
-      case '/reports':
-        return 'Reports Center';
-      case '/premium':
-        return 'Premium Analytics';
-      case '/notifications':
-        return 'Push Notifications';
-      case '/admin-alerts':
-        return 'Admin Alerts';
-      case '/content':
-        return 'Content Management';
-      case '/settings':
-        return 'App Configurations';
+      case "/":
+        return { title: "Dashboard Overview", subtitle: "Real-time metrics, analytics, and platform health" };
+      case "/users":
+        return { title: "User Management", subtitle: "Browse, filter, and audit registered seeker accounts" };
+      case "/photos":
+        return { title: "Photo Moderation", subtitle: "Verify user profile avatars and gallery photos" };
+      case "/verification":
+        return { title: "Verification Center", subtitle: "Identity & document verification queue" };
+      case "/chats":
+        return { title: "Chat Moderation", subtitle: "Monitor active conversation safety and flags" };
+      case "/reports":
+        return { title: "Reports Center", subtitle: "Investigate flagged user complaints and profile harassment" };
+      case "/support":
+        return { title: "Support Helpdesk", subtitle: "Live 2-way customer inquiries and issue resolution" };
+      case "/premium":
+        return { title: "Premium Management", subtitle: "Subscription packages and payment transactions" };
+      case "/notifications":
+        return { title: "Push Notifications", subtitle: "Broadcast notifications and system announcements" };
+      case "/admin-alerts":
+        return { title: "Admin Alerts", subtitle: "Security logs, critical warnings, and triggers" };
+      case "/admins":
+        return { title: "Admin Team", subtitle: "Manage staff permissions and console roles" };
+      case "/settings":
+        return { title: "App Settings", subtitle: "System configurations, pricing, and matching parameters" };
       default:
-        return 'Dashboard';
+        return { title: "Console", subtitle: `${APP_NAME} Enterprise Administration` };
     }
   };
 
+  const { title, subtitle } = getPageInfo();
+
   const getTodayDate = () => {
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    };
-    return new Date().toLocaleDateString('en-US', options);
+    return new Date().toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   return (
-    <header className="h-20 border-b border-primary/10 bg-white/80 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-40">
+    <header className="h-18 border-b border-slate-200/80 bg-white/90 backdrop-blur-md flex items-center justify-between px-8 sticky top-0 z-20 shadow-xs">
       <div>
-        <h1 className="text-xl font-bold font-display text-text-primary tracking-tight">
-          {getPageTitle()}
+        <h1 className="text-lg font-bold font-display text-slate-900 tracking-tight flex items-center gap-2">
+          {title}
         </h1>
-        <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">
-          {getTodayDate()}
+        <p className="text-xs text-slate-400 font-medium">
+          {subtitle}
         </p>
       </div>
 
-      <div className="flex items-center gap-6 flex-1 justify-end">
+      <div className="flex items-center gap-4">
+        <span className="text-xs text-slate-500 font-medium bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200/70 hidden sm:inline-block">
+          {getTodayDate()}
+        </span>
+
         {/* Notifications Bell */}
-        <button 
-          onClick={() => router.push('/admin-alerts')}
-          className="relative p-2 text-text-secondary hover:text-primary hover:bg-primary/5 rounded-full transition-colors"
+        <button
+          onClick={() => router.push("/admin-alerts")}
+          className="relative p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/70 rounded-xl border border-slate-200/80 transition-colors cursor-pointer"
+          title="Admin Alerts"
         >
-          <Bell className="w-5 h-5" />
+          <Bell className="w-4 h-4" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1.5 w-2.5 h-2.5 bg-error rounded-full border-2 border-white animate-pulse shadow-[0_0_8px_rgba(255,75,75,0.6)]"></span>
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center border-2 border-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
           )}
         </button>
 
-        <div className="h-6 w-px bg-bg-border mx-2"></div>
-
-        {/* Secure badge */}
-        <div className="flex items-center gap-2 py-1.5 px-3 bg-primary/10 text-primary border border-primary/20 rounded-xl shadow-neon-primary">
-          <ShieldCheck className="w-4 h-4 text-primary" />
-          <span className="text-[9px] font-bold tracking-widest uppercase text-primary">
-            {admin?.role === 'super_admin' ? 'SECURE ROOT' : 'VERIFIED STACK'}
-          </span>
+        {/* Status Badge */}
+        <div className="flex items-center gap-1.5 py-1.5 px-3 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-xl text-xs font-bold shadow-xs">
+          <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+          <span>{admin?.role === "super_admin" ? "SUPER ADMIN" : "STAFF"}</span>
         </div>
       </div>
     </header>

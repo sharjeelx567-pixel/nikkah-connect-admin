@@ -1,4 +1,4 @@
-import * as readline from 'readline';
+﻿import * as readline from 'readline';
 import * as bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -7,6 +7,7 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 import { initializeFirebase, db, admin } from '../config/firebase';
+import { APP_NAME } from '../config/branding';
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -18,7 +19,7 @@ const askQuestion = (query: string): Promise<string> => {
 };
 
 async function main() {
-  console.log('=== NikkahConnect Admin Account Creator ===');
+  console.log(`=== ${APP_NAME} Admin Account Creator ===`);
 
   try {
     initializeFirebase();
@@ -53,17 +54,23 @@ async function main() {
     }
 
     console.log('\nAvailable Roles:');
-    console.log('1. super_admin');
-    console.log('2. moderator');
-    console.log('3. support');
-    console.log('4. verification_officer');
+    console.log('1. super_admin (Full Access)');
+    console.log('2. admin (General Management)');
+    console.log('3. moderator (Moderation & Reports)');
+    console.log('4. verification_staff (ID & CNIC Verification)');
+    console.log('5. support_staff (Customer Support & Tickets)');
+    console.log('6. content_moderator (Photo & Media Safety)');
+    console.log('7. analyst (Read-Only Analytics)');
     
-    const roleChoice = (await askQuestion('Select Role (1-4): ')).trim();
+    const roleChoice = (await askQuestion('Select Role (1-7): ')).trim();
     let role = 'moderator';
     if (roleChoice === '1') role = 'super_admin';
-    else if (roleChoice === '2') role = 'moderator';
-    else if (roleChoice === '3') role = 'support';
-    else if (roleChoice === '4') role = 'verification_officer';
+    else if (roleChoice === '2') role = 'admin';
+    else if (roleChoice === '3') role = 'moderator';
+    else if (roleChoice === '4') role = 'verification_staff';
+    else if (roleChoice === '5') role = 'support_staff';
+    else if (roleChoice === '6') role = 'content_moderator';
+    else if (roleChoice === '7') role = 'analyst';
     else {
       console.warn('⚠️ Invalid choice, defaulting to "moderator"');
     }

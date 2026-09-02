@@ -1,12 +1,25 @@
+﻿import 'dotenv/config';
 // @ts-nocheck
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { initializeFirebase, db } from './config/firebase';
 import apiRoutes from './routes';
 import * as bcrypt from 'bcryptjs';
+import { APP_NAME } from './config/branding';
 
+function validateEnv() {
+  const requiredEnv = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'DEFAULT_ADMIN_EMAIL', 'DEFAULT_ADMIN_PASSWORD'];
+  const missing = requiredEnv.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    console.error('[FATAL] Missing required environment variables:', missing.join(', '));
+    process.exit(1);
+  }
+}
+
+validateEnv();
 initializeFirebase();
 
 const app = express();
@@ -14,7 +27,10 @@ const app = express();
 // REQUIRED for Vercel - trust the proxy so rate-limiter works correctly
 app.set('trust proxy', 1);
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
 app.use(cors({
   origin: function (origin, callback) {
     const allowedOrigins = [
@@ -31,6 +47,9 @@ app.use(cors({
   },
   credentials: true,
 }));
+
+// Static files for uploads
+app.use('/uploads', express.static(path.join(process.cwd(), 'public', 'uploads')));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -49,7 +68,7 @@ app.use((req, res, next) => {
 app.use('/api', apiRoutes);
 
 app.get('/', (req, res) => {
-  res.json({ name: 'NikkahConnect Admin API', version: '1.0.0', status: 'online' });
+  res.json({ name: `${APP_NAME} Admin API`, version: '1.0.0', status: 'online' });
 });
 
 async function seedDefaultAdmin() {
@@ -57,17 +76,19 @@ async function seedDefaultAdmin() {
     if (!db) return;
     const snap = await db.collection('admins').limit(1).get();
     if (snap.empty) {
+      const defaultEmail = process.env.DEFAULT_ADMIN_EMAIL!;
+      const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD!;
       const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash('AdminPassword123!', salt);
+      const passwordHash = await bcrypt.hash(defaultPassword, salt);
       await db.collection('admins').add({
-        email: 'admin@nikkahconnect.com',
+        email: defaultEmail,
         displayName: 'Super Admin',
         role: 'super_admin',
         passwordHash,
         isActive: true,
         createdAt: new Date(),
       });
-      console.log('[Seed] Admin created: admin@nikkahconnect.com');
+      console.log('[Seed] Admin created: ', defaultEmail);
     }
   } catch (e) {
     console.error('[Seed] Error:', e);
