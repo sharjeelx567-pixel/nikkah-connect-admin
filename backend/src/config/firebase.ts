@@ -45,7 +45,19 @@ export function initializeFirebase(): void {
 
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       try {
-        const fixed = fixJsonControlChars(process.env.FIREBASE_SERVICE_ACCOUNT);
+        let raw = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+        // Check if string is base64 encoded
+        if (raw.length > 20 && !raw.startsWith('{')) {
+          try {
+            const decoded = Buffer.from(raw, 'base64').toString('utf8');
+            if (decoded.trim().startsWith('{')) {
+              raw = decoded;
+            }
+          } catch (b64Err) {
+            console.log('[Firebase] Base64 decode attempt ignored:', b64Err);
+          }
+        }
+        const fixed = fixJsonControlChars(raw);
         serviceAccount = JSON.parse(fixed);
         console.log('[Firebase] Loaded from FIREBASE_SERVICE_ACCOUNT env var.');
       } catch (err) {
@@ -56,22 +68,32 @@ export function initializeFirebase(): void {
     if (!serviceAccount) {
       const keyPath = path.resolve(process.cwd(), 'serviceAccountKey.json');
       if (fs.existsSync(keyPath)) {
-        serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
-        console.log('[Firebase] Loaded from local serviceAccountKey.json.');
+        try {
+          serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+          console.log('[Firebase] Loaded from local serviceAccountKey.json.');
+        } catch (fileErr) {
+          console.error('[Firebase] Failed to parse local serviceAccountKey.json:', fileErr);
+        }
       }
     }
 
     if (serviceAccount) {
-      firebaseApp = initializeApp({ credential: cert(serviceAccount), projectId: serviceAccount.project_id });
-      console.log('[Firebase] Initialized successfully.');
+      if (serviceAccount.private_key && typeof serviceAccount.private_key === 'string') {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+      firebaseApp = initializeApp({
+        credential: cert(serviceAccount),
+        projectId: serviceAccount.project_id || 'nikkah-639d3'
+      });
+      console.log('[Firebase] Initialized successfully with credentials.');
     } else {
-      console.error('[Firebase] No credentials found! Set FIREBASE_SERVICE_ACCOUNT on Vercel.');
-      firebaseApp = initializeApp({ projectId: 'nikkah-639d3' });
+      console.warn('[Firebase] No credentials found! Set FIREBASE_SERVICE_ACCOUNT on Vercel.');
+      firebaseApp = initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || 'nikkah-639d3' });
     }
 
     db = getFirestore(firebaseApp);
   } catch (error) {
-    console.error('[Firebase] Init error:', error);
+    console.error('[Firebase] Init error (non-fatal):', error);
   }
 }
 
