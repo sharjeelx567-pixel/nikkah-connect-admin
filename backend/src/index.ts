@@ -87,7 +87,7 @@ app.use((req, res, next) => {
 
 app.use('/api', apiRoutes);
 
-app.get('/', (req, res) => {
+app.get(['/', '/api'], (req, res) => {
   res.json({
     name: `${APP_NAME} Admin API`,
     version: '1.0.0',
@@ -139,11 +139,18 @@ async function seedDefaultAdmin() {
 
 seedDefaultAdmin();
 
-if (!process.env.VERCEL) {
+// Only listen when running standalone in local dev
+if (!process.env.VERCEL && !process.env.VERCEL_ENV && !process.env.NOW_REGION) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`[Server] Running on http://0.0.0.0:${PORT}`));
 }
 
+if (typeof module !== 'undefined' && module.exports) {
+  (app as any).default = app;
+  module.exports = app;
+  module.exports.default = app;
+}
+
 export default app;
-module.exports = app;
+
 
