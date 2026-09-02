@@ -304,11 +304,19 @@ export async function sendAdminReply(req: Request, res: Response): Promise<void>
     });
 
     // Update ticket metadata
-    await db.collection('support_tickets').doc(id).update({
+    const ticketRef = db.collection('support_tickets').doc(id);
+    await ticketRef.update({
       updatedAt: FieldValue.serverTimestamp(),
       lastMessage: content || (mediaUrl ? '[Photo Attachment]' : ''),
       status: 'Waiting for User'
     });
+
+    // NOT notifying here on purpose: functions/src/index.ts's
+    // onSupportMessageSent Cloud Function trigger already fires on this
+    // same support_tickets/{id}/messages/{messageId} create event and
+    // sends the user a push (see that file — it was fixed there to use a
+    // proper support_reply type + relatedId instead of the generic 'alert'
+    // it used to send). Notifying here too would double-send.
 
     res.json(successResponse({ messageId: msgRef.id }, 'Reply sent successfully'));
   } catch (error) {
