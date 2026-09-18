@@ -55,10 +55,18 @@ export async function createAdmin(req: Request, res: Response): Promise<void> {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Validate optional custom permissions
-    const sanitizedPermissions: AdminPermission[] = Array.isArray(permissions)
-      ? permissions.filter((p: string) => ALL_ADMIN_PERMISSIONS.includes(p as AdminPermission))
-      : [];
+    // Validate optional custom permissions. '*' is a valid AdminPermission
+    // value (grants unrestricted access, same as super_admin's own default)
+    // but is deliberately NOT in ALL_ADMIN_PERMISSIONS's catalog of normal
+    // assignable permissions — so it needs its own explicit pass-through
+    // here, gated to callers who are already super_admin, rather than
+    // either (a) being silently dropped for everyone including a
+    // legitimate super_admin grant, or (b) slipping through some other
+    // check for a non-super_admin holding only admins.create.
+    const sanitizedPermissions: AdminPermission[] = (Array.isArray(permissions)
+      ? permissions.filter((p: string) => p === '*' || ALL_ADMIN_PERMISSIONS.includes(p as AdminPermission))
+      : []
+    ).filter((p) => p !== '*' || req.admin?.role === 'super_admin');
 
     // Create Firebase Auth User or use existing
     let userRecord;
@@ -181,7 +189,12 @@ export async function updateAdmin(req: Request, res: Response): Promise<void> {
 
     if (permissions !== undefined) {
       if (Array.isArray(permissions)) {
-        updateData.permissions = permissions.filter((p: string) => ALL_ADMIN_PERMISSIONS.includes(p as AdminPermission));
+        // Same '*' handling as createAdmin — explicit pass-through since
+        // it's not in ALL_ADMIN_PERMISSIONS's normal catalog, then
+        // restricted to super_admin callers only.
+        updateData.permissions = permissions
+          .filter((p: string) => p === '*' || ALL_ADMIN_PERMISSIONS.includes(p as AdminPermission))
+          .filter((p: string) => p !== '*' || req.admin!.role === 'super_admin');
       }
     }
 

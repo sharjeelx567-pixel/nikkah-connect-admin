@@ -5,7 +5,12 @@ const DEFAULT_R2_ACCOUNT_ID = '19799f8d4440d7bfde10a40545bc775b';
 const DEFAULT_R2_ACCESS_KEY_ID = '6c11aa6239116b030e558b82a27a1921';
 const DEFAULT_R2_SECRET_ACCESS_KEY = '22b21b3bd21d7e39dc33ad3a5628d84b786db07ac5b2a0e5bb120ccc3394cac9';
 
-// Cloudflare R2 is the storage provider for uploaded files in this backend
+// Cloudflare R2 is the storage provider for uploaded files in this backend.
+// profile/chat/voice/video mirror the same bucket names the Cloud Functions
+// codebase uses (functions/src/index.ts r2Buckets, functions/.env.example) —
+// added so admin-initiated account deletion can sweep every category a user
+// might have uploaded to, not just the 3 categories this backend previously
+// had its own routes for.
 export const r2Buckets = {
   support: {
     bucket: process.env.R2_SUPPORT_BUCKET || 'nikkah-support-media',
@@ -18,6 +23,22 @@ export const r2Buckets = {
   verification: {
     bucket: process.env.R2_VERIFICATION_BUCKET || 'nikkah-verification-media',
     domain: '',
+  },
+  profile: {
+    bucket: process.env.R2_PROFILE_BUCKET || 'nikkah-profile-media',
+    domain: process.env.R2_PROFILE_DOMAIN || '',
+  },
+  chat: {
+    bucket: process.env.R2_CHAT_BUCKET || 'nikkah-chat-media',
+    domain: process.env.R2_CHAT_DOMAIN || '',
+  },
+  voice: {
+    bucket: process.env.R2_VOICE_BUCKET || 'nikkah-voice-media',
+    domain: process.env.R2_VOICE_DOMAIN || '',
+  },
+  video: {
+    bucket: process.env.R2_VIDEO_BUCKET || 'nikkah-video-media',
+    domain: process.env.R2_VIDEO_DOMAIN || '',
   },
 } as const;
 

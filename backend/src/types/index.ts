@@ -48,7 +48,9 @@ export type AdminPermission =
   | 'content.publish'
   | 'content.delete'
   | 'settings.view'
-  | 'settings.manage';
+  | 'settings.manage'
+  | 'posts.view'
+  | 'posts.manage';
 
 export const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   'users.view',
@@ -89,6 +91,8 @@ export const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   'content.delete',
   'settings.view',
   'settings.manage',
+  'posts.view',
+  'posts.manage',
 ];
 
 export const ROLE_DEFAULT_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
@@ -124,6 +128,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     'content.publish',
     'content.delete',
     'settings.view',
+    'posts.view',
+    'posts.manage',
   ],
   moderator: [
     'users.view',
@@ -136,6 +142,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<AdminRole, AdminPermission[]> = {
     'chat_moderation.view',
     'chat_moderation.manage',
     'audit_logs.view',
+    'posts.view',
+    'posts.manage',
   ],
   verification_staff: [
     'verification.view',
@@ -187,6 +195,7 @@ export interface Admin {
   createdAt: FirebaseFirestore.Timestamp;
   lastLoginAt?: FirebaseFirestore.Timestamp;
   passwordHash?: string;
+  mustChangePassword?: boolean;
 }
 
 export interface AdminJwtPayload {
@@ -247,10 +256,54 @@ export interface AuditLog {
   adminEmail: string;
   action: string;
   targetId: string;
-  targetType: 'user' | 'photo' | 'verification' | 'report' | 'setting' | 'admin' | 'legal_document' | 'notification';
+  targetType: 'user' | 'photo' | 'verification' | 'report' | 'setting' | 'admin' | 'legal_document' | 'notification' | 'post' | 'comment' | 'community';
   details: Record<string, unknown>;
   timestamp: FirebaseFirestore.Timestamp | Date | FirebaseFirestore.FieldValue;
   ip: string;
+}
+
+// Community + Relationship Posts — deliberately a stricter design than
+// Report above (post_reports uses a deterministic {postId|commentId}_
+// {reporterId} doc id, Cloud-Function-only writes, never a direct client
+// .add()) — see functions/src/index.ts's reportPostContent.
+export interface PostReport {
+  id?: string;
+  reporterId: string;
+  contentType: 'post' | 'comment';
+  postId: string;
+  commentId?: string;
+  targetAuthorUid: string;
+  reason: string;
+  status: 'pending' | 'resolved' | 'dismissed';
+  resolvedBy?: string;
+  resolvedAt?: FirebaseFirestore.Timestamp;
+  createdAt: FirebaseFirestore.Timestamp;
+}
+
+export interface RelationshipPost {
+  id?: string;
+  communityId: string;
+  authorUid: string;
+  profileUid: string;
+  displayName: string;
+  age: number;
+  gender: string;
+  city: string;
+  education?: string;
+  profession?: string;
+  familyBackground?: string;
+  aboutMe?: string;
+  partnerPreferences?: string;
+  photoUrl?: string;
+  status: 'active' | 'hidden' | 'removed';
+  moderatedBy?: string;
+  moderatedAt?: FirebaseFirestore.Timestamp;
+  moderationReason?: string;
+  likeCount: number;
+  commentCount: number;
+  reportCount: number;
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
 }
 
 export interface PaginationQuery {

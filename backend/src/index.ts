@@ -10,21 +10,25 @@ import apiRoutes from './routes';
 import * as bcrypt from 'bcryptjs';
 import { APP_NAME } from './config/branding';
 
-// Provide safe fallbacks so missing env vars on Vercel do not crash cold starts
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'nikkah-connect-admin-secret-key-fallback-2026';
-process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'nikkah-connect-admin-refresh-secret-fallback-2026';
-process.env.DEFAULT_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'admin@nikkahconnect.com';
-process.env.DEFAULT_ADMIN_PASSWORD = process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123456';
-
-function validateEnv() {
-  const requiredEnv = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'DEFAULT_ADMIN_EMAIL', 'DEFAULT_ADMIN_PASSWORD'];
-  const missing = requiredEnv.filter(k => !process.env[k]);
+// JWT_SECRET/JWT_REFRESH_SECRET/DEFAULT_ADMIN_EMAIL/DEFAULT_ADMIN_PASSWORD
+// used to fall back to hardcoded literal values here whenever the real env
+// vars were unset ("so missing env vars on Vercel do not crash cold
+// starts") — those literals were committed to source, so anyone reading
+// this repo could forge a valid admin JWT for any known admin uid, or log
+// in as a real super_admin using the well-known default credentials, on
+// any deployment that didn't happen to have every one of these four env
+// vars explicitly set. Fail fast instead: a missing secret must stop the
+// process, not silently substitute a public, guessable one.
+function requireEnv(keys: string[]) {
+  const missing = keys.filter(k => !process.env[k]);
   if (missing.length > 0) {
-    console.warn('[WARN] Missing recommended environment variables:', missing.join(', '));
+    console.error('[FATAL] Missing required environment variables:', missing.join(', '));
+    console.error('[FATAL] Refusing to start with an insecure/undefined JWT or admin-bootstrap secret.');
+    process.exit(1);
   }
 }
 
-validateEnv();
+requireEnv(['JWT_SECRET', 'JWT_REFRESH_SECRET']);
 
 try {
   initializeFirebase();
@@ -115,6 +119,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
+// Previously fell back to the literal 'admin@nikkahconnect.com' /
+// 'Admin@123456' whenever DEFAULT_ADMIN_EMAIL/DEFAULT_ADMIN_PASSWORD were
+// unset — those exact values are now public (committed to source history),
+// so on any deployment that skipped setting them, or on any redeploy after
+// the `admins` collection was ever emptied, this would silently recreate a
+// real super_admin account with a publicly known password. Only ever seeds
+// from EXPLICITLY configured env vars now, and refuses outright if the
+// configured password is one of the known-leaked/weak values.
+const KNOWN_WEAK_ADMIN_PASSWORDS = new Set(['admin@123456', 'password', 'admin123', 'changeme']);
+
 async function seedDefaultAdmin() {
   try {
     if (!db) {
@@ -122,21 +136,42 @@ async function seedDefaultAdmin() {
       return;
     }
     const snap = await db.collection('admins').limit(1).get();
-    if (snap.empty) {
-      const defaultEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@nikkahconnect.com';
-      const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'Admin@123456';
-      const salt = await bcrypt.genSalt(10);
-      const passwordHash = await bcrypt.hash(defaultPassword, salt);
-      await db.collection('admins').add({
-        email: defaultEmail,
-        displayName: 'Super Admin',
-        role: 'super_admin',
-        passwordHash,
-        isActive: true,
-        createdAt: new Date(),
-      });
-      console.log('[Seed] Admin created: ', defaultEmail);
+    if (!snap.empty) return;
+
+    const email = process.env.DEFAULT_ADMIN_EMAIL;
+    const password = process.env.DEFAULT_ADMIN_PASSWORD;
+
+    if (!email || !password) {
+      console.error(
+        '[Seed] No admin accounts exist and DEFAULT_ADMIN_EMAIL/DEFAULT_ADMIN_PASSWORD are not set. ' +
+        'Refusing to auto-create an admin account. Set both explicitly to a real email and a strong, ' +
+        'unique password (never a shared/well-known value) to bootstrap the first super_admin, then ' +
+        'change that password and enable 2FA immediately after first login.'
+      );
+      return;
     }
+    if (KNOWN_WEAK_ADMIN_PASSWORDS.has(password.toLowerCase()) || password.length < 12) {
+      console.error(
+        '[Seed] DEFAULT_ADMIN_PASSWORD is a known-leaked or too-short value — refusing to seed an admin ' +
+        'account with it. Set a strong, unique password (12+ characters, never previously used) and retry.'
+      );
+      return;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+    await db.collection('admins').add({
+      email,
+      displayName: 'Super Admin',
+      role: 'super_admin',
+      passwordHash,
+      isActive: true,
+      // Login response surfaces this so the console can prompt a forced
+      // password change / 2FA setup before proceeding.
+      mustChangePassword: true,
+      createdAt: new Date(),
+    });
+    console.log('[Seed] Bootstrap super_admin created for', email, '— sign in, change the password, and enable 2FA immediately.');
   } catch (e) {
     console.warn('[Seed] Non-fatal seed error:', e);
   }

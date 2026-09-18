@@ -11,6 +11,9 @@ export function successResponse<T>(data: T, message?: string): ApiResponse<T> {
   };
 }
 
+
+
+
 export function errorResponse(error: string, details?: unknown): ApiResponse {
   return {
     success: false,

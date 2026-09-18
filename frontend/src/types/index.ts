@@ -48,7 +48,9 @@ export type AdminPermission =
   | 'content.publish'
   | 'content.delete'
   | 'settings.view'
-  | 'settings.manage';
+  | 'settings.manage'
+  | 'posts.view'
+  | 'posts.manage';
 
 export const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   'users.view',
@@ -89,6 +91,8 @@ export const ALL_ADMIN_PERMISSIONS: AdminPermission[] = [
   'content.delete',
   'settings.view',
   'settings.manage',
+  'posts.view',
+  'posts.manage',
 ];
 
 export interface Admin {
@@ -125,6 +129,7 @@ export interface NikkahUser {
   photos?: string[];
   galleryImages?: string[];
   pendingGalleryImages?: string[];
+  totalPhotoCount?: number;
   photoRejectionReason?: string;
   verificationStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   verificationDocType?: 'cnic' | 'passport' | 'video';
@@ -132,6 +137,8 @@ export interface NikkahUser {
   verificationVideoUrl?: string;
   isPremium?: boolean;
   isVerified?: boolean;
+  identityVerified?: boolean;
+  genderVerified?: boolean;
   isBanned?: boolean;
   isSuspended?: boolean;
   banReason?: string;
@@ -167,7 +174,12 @@ export interface UserPhotoDetail {
 
 export interface Report {
   id: string;
-  _collection?: "reports" | "support_tickets";
+  _collection?: "reports" | "support_tickets" | "post_reports";
+  // Only present for _collection === "post_reports" — lets the UI link
+  // straight to the reported relationship post/comment.
+  postId?: string;
+  commentId?: string | null;
+  contentType?: "post" | "comment";
   userId?: string;
   reporterId?: string;
   reporterUid?: string;

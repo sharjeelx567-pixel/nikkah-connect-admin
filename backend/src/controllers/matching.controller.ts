@@ -129,20 +129,29 @@ export async function getDormantProfiles(req: Request, res: Response): Promise<v
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
+    // `adminOverrideHide` is an opt-in flag an admin explicitly sets to keep
+    // an otherwise-dormant profile visible — the vast majority of docs never
+    // have it set at all. A Firestore `== false` filter does NOT match a
+    // missing field, so this previously excluded almost every real dormant
+    // user and always returned an empty (or near-empty) list regardless of
+    // actual inactivity. Filter it out in code instead, where "missing" and
+    // "false" are both treated as "not overridden".
     const snapshot = await db.collection('users')
       .where('lastActiveAt', '<', ninetyDaysAgo)
-      .where('adminOverrideHide', '==', false)
-      .limit(50)
+      .limit(200)
       .get();
 
-    const profiles = snapshot.docs.map(doc => ({
-      uid: doc.id,
-      displayName: doc.data().displayName,
-      email: doc.data().email,
-      lastActiveAt: doc.data().lastActiveAt?.toDate(),
-      isPremium: doc.data().isPremium,
-    }));
-    
+    const profiles = snapshot.docs
+      .filter(doc => doc.data().adminOverrideHide !== true)
+      .slice(0, 50)
+      .map(doc => ({
+        uid: doc.id,
+        displayName: doc.data().displayName,
+        email: doc.data().email,
+        lastActiveAt: doc.data().lastActiveAt?.toDate(),
+        isPremium: doc.data().isPremium,
+      }));
+
     res.json(successResponse(profiles));
   } catch (error) {
     console.error('[Matching Admin] getDormantProfiles error:', error);

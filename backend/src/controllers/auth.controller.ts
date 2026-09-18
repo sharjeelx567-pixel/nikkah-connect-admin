@@ -45,11 +45,14 @@ export async function login(req: Request, res: Response): Promise<void> {
     const adminDoc = snapshot.docs[0];
     const adminData = adminDoc.data() as Admin;
 
-    if (!adminData.isActive) {
-      res.status(403).json(errorResponse('Your account has been deactivated'));
-      return;
-    }
-
+    // Was checking isActive BEFORE the password comparison and returning a
+    // distinct 403 — that let an unauthenticated caller probe any email
+    // with a throwaway password and learn, from the status code alone,
+    // whether it belongs to a real (if deactivated) admin account, with no
+    // valid credentials at all. Only reveal account-state specifics (like
+    // "deactivated") after a correct password has actually been proven —
+    // every other failure path (no such email, no passwordHash, wrong
+    // password) returns the exact same generic response.
     if (!adminData.passwordHash) {
       res.status(401).json(errorResponse('Invalid email or password'));
       return;
@@ -57,6 +60,11 @@ export async function login(req: Request, res: Response): Promise<void> {
     const passwordMatch = await bcrypt.compare(password, adminData.passwordHash);
     if (!passwordMatch) {
       res.status(401).json(errorResponse('Invalid email or password'));
+      return;
+    }
+
+    if (!adminData.isActive) {
+      res.status(403).json(errorResponse('Your account has been deactivated'));
       return;
     }
 
@@ -94,6 +102,10 @@ export async function login(req: Request, res: Response): Promise<void> {
         role: adminData.role,
         permissions: adminData.permissions || [],
         effectivePermissions: computeEffectivePermissions(adminData),
+        // Set on a freshly-bootstrapped super_admin (see seedDefaultAdmin in
+        // index.ts) — the console should force a password change / 2FA
+        // setup before letting this session do anything else.
+        mustChangePassword: adminData.mustChangePassword === true,
       },
     }, 'Login successful'));
   } catch (error) {

@@ -26,7 +26,8 @@ import {
   Briefcase,
   GraduationCap,
   Clock,
-  ShieldAlert
+  ShieldAlert,
+  Trash2
 } from "lucide-react";
 
 export default function UsersPage() {
@@ -44,6 +45,13 @@ export default function UsersPage() {
   const [activeModalTab, setActiveModalTab] = useState<"details" | "photos" | "actions">("details");
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Delete-account confirmation controls — a plain window.confirm isn't
+  // enough for an irreversible, cascading account deletion, so this requires
+  // typing the literal word DELETE before the button even enables.
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   // Users are loaded through the authenticated admin API, not a direct
   // Firestore listener.
@@ -171,6 +179,24 @@ export default function UsersPage() {
     onError: onActionError,
   });
 
+  // Cascading, server-side, admin-only permanent deletion — DELETE
+  // /api/users/:uid (users.controller.ts) requires { confirm: "DELETE" } in
+  // the body as a second, server-enforced gate beyond this dialog, so the
+  // deletion can't be triggered by a stray/replayed request either.
+  const deleteMutation = useMutation({
+    mutationFn: async (uid: string) => {
+      await api.delete(`/users/${uid}`, { data: { confirm: "DELETE" } });
+    },
+    onSuccess: (_data, uid) => {
+      setIsConfirmingDelete(false);
+      setDeleteConfirmText("");
+      setSuccessMessage(`Account ${uid.slice(0, 8)}… was permanently deleted.`);
+      window.setTimeout(() => setSuccessMessage(null), 6000);
+      onActionSuccess();
+    },
+    onError: onActionError,
+  });
+
   const getStatusBadge = (user: NikkahUser) => {
     if (user.isBanned)
       return (
@@ -259,6 +285,20 @@ export default function UsersPage() {
         </div>
       </div>
 
+      {successMessage && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl text-sm font-medium flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" /> {successMessage}
+          </span>
+          <button
+            onClick={() => setSuccessMessage(null)}
+            className="text-emerald-600 hover:text-emerald-800 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 2. Main Users Table */}
       <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
@@ -341,19 +381,29 @@ export default function UsersPage() {
 
                     {/* ID Verification */}
                     <td className="px-6 py-4">
-                      {user.isVerified ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 w-fit">
-                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          CNIC Verified
-                        </span>
-                      ) : user.verificationStatus === "pending" ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 w-fit">
-                          <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
-                          KYC Pending
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">Unverified</span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {user.identityVerified ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 w-fit">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            CNIC Verified
+                          </span>
+                        ) : user.verificationStatus === "pending" ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1 w-fit">
+                            <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                            KYC Pending
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-xs">Unverified</span>
+                        )}
+                        {/* Separate from identity/CNIC verification — approving
+                            one does not imply the other. */}
+                        {user.genderVerified && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 flex items-center gap-1 w-fit">
+                            <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+                            Voice Verified
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Plan */}
@@ -656,8 +706,109 @@ export default function UsersPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Danger Zone — permanent, cascading account deletion */}
+                    <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 space-y-3">
+                      <h4 className="font-bold text-rose-900 flex items-center gap-2">
+                        <Trash2 className="w-4 h-4" /> Danger Zone
+                      </h4>
+                      <p className="text-[11px] text-rose-600 leading-relaxed">
+                        Permanently deletes this account: Firebase Authentication, the full Firestore
+                        record (profile, connections, interests, match requests, chats &amp; messages,
+                        notifications, verification data, and every other record tied to this user), and
+                        all uploaded photos/files in storage. This cannot be undone.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setActionError(null);
+                          setDeleteConfirmText("");
+                          setIsConfirmingDelete(true);
+                        }}
+                        className="w-full py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl font-bold cursor-pointer"
+                      >
+                        Delete Account Permanently
+                      </button>
+                    </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete-account confirmation dialog — layered above the details
+          modal; requires typing DELETE before the destructive button
+          enables, per the "strong confirmation" requirement for an
+          irreversible, cascading deletion. */}
+      <AnimatePresence>
+        {isConfirmingDelete && selectedUser && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-rose-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Delete this account permanently?
+                </h3>
+              </div>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                This action cannot be undone.{" "}
+                <strong>
+                  {selectedUser.displayName || selectedUser.email || selectedUser.uid}
+                </strong>
+                &apos;s account, profile, connections, interests, match requests, chats and
+                messages, notifications, verification records, and uploaded photos/files will
+                be permanently deleted from Firebase Authentication and Firestore.
+              </p>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Type DELETE to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  autoFocus
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                />
+              </div>
+              {actionError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-sm font-medium">
+                  {actionError}
+                </div>
+              )}
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setIsConfirmingDelete(false);
+                    setDeleteConfirmText("");
+                    setActionError(null);
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteMutation.mutate(selectedUser.uid)}
+                  disabled={deleteConfirmText !== "DELETE" || deleteMutation.isPending}
+                  className="flex-1 py-2 bg-rose-700 hover:bg-rose-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold cursor-pointer"
+                >
+                  {deleteMutation.isPending ? "Deleting…" : "Delete Permanently"}
+                </button>
               </div>
             </motion.div>
           </motion.div>

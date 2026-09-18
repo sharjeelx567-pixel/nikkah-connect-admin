@@ -1,9 +1,8 @@
 ﻿// @ts-nocheck
 import { Request, Response } from 'express';
 import { db } from '../config/firebase';
-import { successResponse, errorResponse, getPaginationParams, serverTimestamp } from '../utils/helpers';
-import { getMessaging } from 'firebase-admin/messaging';
-import { FieldValue } from 'firebase-admin/firestore';
+import { successResponse, errorResponse, getPaginationParams, serverTimestamp, createAuditLog, getClientIp } from '../utils/helpers';
+import { notifyUser } from './users.controller';
 
 // Helper: look up user details by ID
 async function getUserInfo(userId: string | undefined | null) {
@@ -45,12 +44,27 @@ export async function getReports(req: Request, res: Response): Promise<void> {
     }
     const ticketsSnap = await ticketsQuery.get();
 
+    // Fetch from 'post_reports' collection (Community/Relationship Posts —
+    // reportPostContent in functions/src/index.ts). Deliberately a separate
+    // collection from 'reports' above (which is user-reports only, no
+    // contentType field) rather than conflating the two shapes; this
+    // controller's merge-by-_collection design is exactly what makes
+    // adding a third source this cheap.
+    let postReportsQuery: FirebaseFirestore.Query = db.collection('post_reports');
+    if (status && status !== 'all') {
+      postReportsQuery = postReportsQuery.where('status', '==', status);
+    }
+    const postReportsSnap = await postReportsQuery.get();
+
     const rawItems: any[] = [];
     reportsSnap.docs.forEach(doc => {
       rawItems.push({ id: doc.id, _collection: 'reports', ...doc.data() });
     });
     ticketsSnap.docs.forEach(doc => {
       rawItems.push({ id: doc.id, _collection: 'support_tickets', ...doc.data() });
+    });
+    postReportsSnap.docs.forEach(doc => {
+      rawItems.push({ id: doc.id, _collection: 'post_reports', ...doc.data() });
     });
 
     // Deduplicate and sort descending by timestamp
@@ -70,7 +84,9 @@ export async function getReports(req: Request, res: Response): Promise<void> {
     const enriched = await Promise.all(
       combined.map(async (doc) => {
         const reporterUid = doc.reporterId || doc.userId;
-        const reportedUid = doc.reportedUserId || doc.reportedProfileUid || doc.targetUid;
+        // post_reports uses targetAuthorUid (the post/comment author), not
+        // reportedUserId — same underlying concept, different field name.
+        const reportedUid = doc.reportedUserId || doc.reportedProfileUid || doc.targetUid || doc.targetAuthorUid;
 
         const [reporter, reportedUser] = await Promise.all([
           getUserInfo(reporterUid),
@@ -84,13 +100,18 @@ export async function getReports(req: Request, res: Response): Promise<void> {
           id: doc.id,
           _collection: doc._collection || 'support_tickets',
           status: (doc.status || 'open').toLowerCase(),
-          category: doc.category || doc.type || 'General Report',
+          category: doc._collection === 'post_reports'
+            ? (doc.contentType === 'comment' ? 'Reported Comment' : 'Reported Post')
+            : (doc.category || doc.type || 'General Report'),
           reason: rawReason,
           description: rawDescription,
           createdAt: doc.createdAt,
           updatedAt: doc.updatedAt,
           reporter: reporter || (doc.userEmail ? { name: doc.userDisplayName || doc.userEmail.split('@')[0], email: doc.userEmail, avatar: null } : { name: 'Anonymous User', email: '', avatar: null }),
           reportedUser: reportedUser || null,
+          // Only present for post_reports — lets the admin UI link straight
+          // to the reported content.
+          ...(doc._collection === 'post_reports' ? { postId: doc.postId, commentId: doc.commentId || null, contentType: doc.contentType } : {}),
         };
       })
     );
@@ -117,13 +138,23 @@ export async function getReports(req: Request, res: Response): Promise<void> {
 export async function resolveReport(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params as { id: string };
-    
+
     let docRef = db.collection('reports').doc(id);
     let docSnap = await docRef.get();
+    let fromSupportTickets = false;
+    let fromPostReports = false;
 
     if (!docSnap.exists) {
       docRef = db.collection('support_tickets').doc(id);
       docSnap = await docRef.get();
+      fromSupportTickets = true;
+    }
+
+    if (!docSnap.exists) {
+      docRef = db.collection('post_reports').doc(id);
+      docSnap = await docRef.get();
+      fromSupportTickets = false;
+      fromPostReports = true;
     }
 
     if (docSnap.exists) {
@@ -134,19 +165,47 @@ export async function resolveReport(req: Request, res: Response): Promise<void> 
       });
 
       const data = docSnap.data();
-      const userId = data?.reporterId || data?.userId;
-      if (userId) {
-        await db.collection('users').doc(userId).collection('notifications').add({
-          title: 'Report Resolved',
-          body: 'Your report has been reviewed and resolved by our moderation team.',
-          timestamp: FieldValue.serverTimestamp(),
-          createdAt: FieldValue.serverTimestamp(),
-          isRead: false,
-          type: 'report_resolved',
+
+      // The existing 'reports'/'support_tickets' branches below never
+      // called createAuditLog (a pre-existing gap in this controller) —
+      // closed here only for the new post_reports path, not backfilled
+      // onto the older ones.
+      if (fromPostReports) {
+        await createAuditLog({
+          adminId: req.admin!.uid,
+          adminEmail: req.admin!.email,
+          action: 'RESOLVE_POST_REPORT',
+          targetId: id,
+          targetType: 'report',
+          details: { contentType: data?.contentType, postId: data?.postId, commentId: data?.commentId || null },
+          timestamp: serverTimestamp() as any,
+          ip: getClientIp(req) as string,
         });
       }
+
+      const userId = data?.reporterId || data?.userId;
+      if (userId && !fromPostReports) {
+        // Was writing straight to Firestore with no push and no
+        // relatedId/reportId — the notification never left the in-app list
+        // (no FCM data payload was ever sent), and even there tapping it
+        // couldn't route anywhere since nothing identified which report it
+        // was about. notifyUser matches the pattern support.controller.ts's
+        // updateTicketStatus already uses for the identical "resolved"
+        // case on the same underlying collection (support_tickets),
+        // including the same 'bug_resolved' type when this doc turned out
+        // to be a ticket rather than a user report.
+        await notifyUser(
+          userId,
+          fromSupportTickets ? 'Your report has been resolved ✅' : 'Report Resolved',
+          fromSupportTickets
+            ? 'Your report has been reviewed and marked as resolved. Tap to view the conversation.'
+            : 'Your report against this user has been reviewed and resolved by our moderation team.',
+          fromSupportTickets ? 'bug_resolved' : 'report_resolved',
+          { relatedId: id }
+        );
+      }
     }
-  
+
     res.json(successResponse(null, 'Report resolved successfully'));
   } catch (error) {
     res.status(500).json(errorResponse('Failed to resolve report', error));
@@ -156,21 +215,42 @@ export async function resolveReport(req: Request, res: Response): Promise<void> 
 export async function dismissReport(req: Request, res: Response): Promise<void> {
   try {
     const { id } = req.params as { id: string };
-    
+
     let docRef = db.collection('reports').doc(id);
     let docSnap = await docRef.get();
+    let fromPostReports = false;
 
     if (!docSnap.exists) {
       docRef = db.collection('support_tickets').doc(id);
       docSnap = await docRef.get();
     }
 
+    if (!docSnap.exists) {
+      docRef = db.collection('post_reports').doc(id);
+      docSnap = await docRef.get();
+      fromPostReports = true;
+    }
+
     if (docSnap.exists) {
+      const data = docSnap.data();
       await docRef.update({
         status: 'dismissed',
         resolvedBy: req.admin?.uid || 'admin',
         resolvedAt: serverTimestamp(),
       });
+
+      if (fromPostReports) {
+        await createAuditLog({
+          adminId: req.admin!.uid,
+          adminEmail: req.admin!.email,
+          action: 'DISMISS_POST_REPORT',
+          targetId: id,
+          targetType: 'report',
+          details: { contentType: data?.contentType, postId: data?.postId, commentId: data?.commentId || null },
+          timestamp: serverTimestamp() as any,
+          ip: getClientIp(req) as string,
+        });
+      }
     }
   
     res.json(successResponse(null, 'Report dismissed successfully'));

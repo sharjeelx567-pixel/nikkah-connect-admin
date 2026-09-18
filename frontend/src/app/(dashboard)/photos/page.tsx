@@ -406,7 +406,7 @@ export default function PhotosPage() {
                         className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-xl text-[11px] font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                       >
                         <Images className="w-3.5 h-3.5" />
-                        View All Photos ({1 + (user.pendingGalleryImages?.length || 0)})
+                        View All Photos ({user.totalPhotoCount ?? (1 + (user.pendingGalleryImages?.length || 0))})
                       </button>
 
                       <div className="flex gap-2">

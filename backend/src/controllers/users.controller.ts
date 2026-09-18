@@ -1,7 +1,9 @@
 ﻿// @ts-nocheck
 import { getAuth } from 'firebase-admin/auth';
 import { Request, Response } from 'express';
+import { ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { db, admin } from '../config/firebase';
+import { r2Buckets, getR2Client } from '../config/r2';
 import { successResponse, errorResponse, getPaginationParams, createAuditLog, getClientIp, serverTimestamp } from '../utils/helpers';
 import { NikkahUser } from '../types';
 
@@ -305,25 +307,303 @@ export async function suspendUser(req: Request, res: Response): Promise<void> {
   }
 }
 
+/**
+ * Permanently and irreversibly deletes a user account: Firebase Auth record,
+ * the `users/{uid}` document and its subcollections, every other Firestore
+ * collection that references the uid (connections, interests, match
+ * requests, matches, chats + messages, notifications, verification data,
+ * etc.), and every R2 object under `users/{uid}/` across all seven media
+ * buckets. Mirrors (and extends — see the gaps noted inline) the self-service
+ * cascade in functions/src/index.ts's deleteMyAccount, re-implemented here
+ * rather than called cross-service because this backend already holds full
+ * Firebase Admin + R2 credentials and the admin console has its own
+ * independent auth/permission system (a Firebase ID token from the deleted
+ * user's own session is never involved, so there's no cross-service auth
+ * bridge to build).
+ *
+ * `transactions` and `payment_history` are deliberately NOT deleted — kept
+ * as a financial audit trail, matching the documented, tested policy for
+ * self-service deletion (security_tests/deletion.test.js, DEL-33).
+ *
+ * Every step is independently try/caught so one failing collection can't
+ * abort the rest of the cascade (a partial failure is recorded in the
+ * returned/audited report rather than left silent or fatal). The route
+ * itself (`DELETE /api/users/:uid`) is only reachable behind this backend's
+ * own `authenticate` + `requirePermission('users.manage')` middleware — a
+ * normal app user has no path to it at all (separate service, separate auth
+ * scheme from the Flutter app's Firebase ID tokens).
+ */
 export async function deleteUser(req: Request, res: Response): Promise<void> {
+  const { uid } = req.params as { uid: string };
+  const step: Record<string, string> = {};
+
+  // Explicit confirmation payload required server-side too, not just a UI
+  // dialog — mirrors deleteMyAccount's `confirm: "DELETE"` gate so a
+  // mis-wired button or blind retry on the admin console can't trigger this.
+  if (req.body?.confirm !== 'DELETE') {
+    res.status(400).json(errorResponse('Deletion requires { confirm: "DELETE" } in the request body.'));
+    return;
+  }
+
   try {
-    const { uid } = req.params as { uid: string };
-    await db.collection('users').doc(uid).delete();
+    const userRef = db.collection('users').doc(uid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      res.status(404).json(errorResponse('User not found'));
+      return;
+    }
+    const userData = userSnap.data() || {};
+
+    const deleteSnapshot = async (snap: FirebaseFirestore.QuerySnapshot, label: string) => {
+      if (snap.empty) { step[label] = 'deleted 0'; return; }
+      for (let i = 0; i < snap.docs.length; i += 400) {
+        const batch = db.batch();
+        snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+      }
+      step[label] = `deleted ${snap.size}`;
+    };
+
+    const deleteWhere = async (collection: string, field: string, label?: string) => {
+      const l = label ?? `${collection}.${field}`;
+      try {
+        const snap = await db.collection(collection).where(field, '==', uid).get();
+        await deleteSnapshot(snap, l);
+      } catch (err: any) {
+        step[l] = `FAILED: ${err?.message || err}`;
+      }
+    };
+
+    // ── Documents keyed by the uid itself ──────────────────────────────────
+    for (const col of [
+      'private_preferences', 'user_preferences', 'sensitive_data',
+      'compatibility_assessments', 'verification_center',
+    ]) {
+      try {
+        const ref = db.collection(col).doc(uid);
+        if ((await ref.get()).exists) {
+          await ref.delete();
+          step[col] = 'deleted';
+        } else {
+          step[col] = 'not present';
+        }
+      } catch (err: any) {
+        step[col] = `FAILED: ${err?.message || err}`;
+      }
+    }
+
+    // ── Documents referencing the uid in a field ───────────────────────────
+    await deleteWhere('blocks', 'blockerId', 'blocks_as_blocker');
+    await deleteWhere('blocks', 'blockedId', 'blocks_as_blocked');
+    await deleteWhere('user_passes', 'userId');
+    await deleteWhere('user_interests', 'senderId', 'interests_sent');
+    await deleteWhere('user_interests', 'receiverId', 'interests_received');
+    await deleteWhere('connection_requests', 'senderId', 'connection_requests_sent');
+    await deleteWhere('connection_requests', 'receiverId', 'connection_requests_received');
+    await deleteWhere('profile_view_requests', 'senderId', 'profile_view_requests_sent');
+    await deleteWhere('profile_view_requests', 'receiverId', 'profile_view_requests_received');
+    await deleteWhere('matches', 'userA', 'matches_a');
+    await deleteWhere('matches', 'userB', 'matches_b');
+    await deleteWhere('matching_scores', 'userA', 'matching_scores_a');
+    await deleteWhere('matching_scores', 'userB', 'matching_scores_b');
+    await deleteWhere('spiritual_compatibility', 'userA', 'spiritual_compatibility_a');
+    await deleteWhere('spiritual_compatibility', 'userB', 'spiritual_compatibility_b');
+    await deleteWhere('rishta_diary', 'userId');
+    await deleteWhere('activity_logs', 'userId');
+    await deleteWhere('verification_requests', 'userId');
+    await deleteWhere('profile_visibility', 'ownerId', 'profile_visibility_owner');
+    await deleteWhere('profile_visibility', 'viewerId', 'profile_visibility_viewer');
+    await deleteWhere('chaperone_access', 'ownerId', 'chaperone_access_owner');
+    await deleteWhere('chaperone_access', 'chaperoneId', 'chaperone_access_chaperone');
+    // Written as `chaperoneId` (functions/src/index.ts submitChaperoneFlag) —
+    // NOT `flaggedBy`, which is what deleteMyAccount's query mistakenly
+    // filters on today (a pre-existing bug there, left as-is in this pass
+    // since it's outside the admin-deletion scope; using the correct field
+    // name here so this routine doesn't repeat the same miss).
+    await deleteWhere('chaperone_flags', 'chaperoneId');
+    await deleteWhere('reports', 'reporterId', 'reports_filed');
+    await deleteWhere('reports', 'reportedUserId', 'reports_against');
+    await deleteWhere('chat_members', 'userId');
+    await deleteWhere('unread_counts', 'userId');
+    await deleteWhere('typing_status', 'userId');
+    await deleteWhere('coach_sessions', 'userId');
+    await deleteWhere('human_verification_bookings', 'userId');
+    await deleteWhere('invitations', 'senderId');
+
+    // ── family_accounts: shared between a guardian (ownerId) and the
+    // candidate they linked (candidateId) — deleting the whole doc when the
+    // CANDIDATE leaves would destroy the guardian's still-valid record, so
+    // only the candidate reference is cleared in that case.
+    try {
+      const asOwner = await db.collection('family_accounts').where('ownerId', '==', uid).get();
+      await deleteSnapshot(asOwner, 'family_accounts_as_owner');
+      const asCandidate = await db.collection('family_accounts').where('candidateId', '==', uid).get();
+      for (const doc of asCandidate.docs) {
+        await doc.ref.update({
+          candidateId: admin.firestore.FieldValue.delete(),
+          candidateRemovedAt: serverTimestamp(),
+          candidateRemovedReason: 'account_deleted',
+        });
+      }
+      step['family_accounts_as_candidate'] = `cleared ${asCandidate.size}`;
+    } catch (err: any) {
+      step['family_accounts'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── family_chat_rooms: shared `participants` array — remove just this
+    // uid so a room with other members still active survives.
+    try {
+      const rooms = await db.collection('family_chat_rooms').where('participants', 'array-contains', uid).get();
+      let roomsDeleted = 0;
+      let roomsUpdated = 0;
+      for (const room of rooms.docs) {
+        const participants = (room.data().participants || []) as string[];
+        if (participants.filter((p) => p !== uid).length === 0) {
+          await room.ref.delete();
+          roomsDeleted++;
+        } else {
+          await room.ref.update({ participants: admin.firestore.FieldValue.arrayRemove(uid) });
+          roomsUpdated++;
+        }
+      }
+      step['family_chat_rooms'] = `deleted ${roomsDeleted}, updated ${roomsUpdated}`;
+    } catch (err: any) {
+      step['family_chat_rooms'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── Support tickets (+ message subcollection + tied activity log) ──────
+    try {
+      const tickets = await db.collection('support_tickets').where('userId', '==', uid).get();
+      let msgCount = 0;
+      for (const t of tickets.docs) {
+        const msgs = await t.ref.collection('messages').get();
+        msgCount += msgs.size;
+        await deleteSnapshot(msgs, `support_messages_${t.id}`);
+        const activity = await db.collection('ticket_activity').where('ticketId', '==', t.id).get();
+        await deleteSnapshot(activity, `ticket_activity_${t.id}`);
+        await t.ref.delete();
+      }
+      step['support_tickets'] = `deleted ${tickets.size} (${msgCount} messages)`;
+    } catch (err: any) {
+      step['support_tickets'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── Chats the user participates in, with their messages ────────────────
+    try {
+      const chats = await db.collection('chats').where('participants', 'array-contains', uid).get();
+      let messageCount = 0;
+      for (const c of chats.docs) {
+        const msgs = await c.ref.collection('messages').get();
+        messageCount += msgs.size;
+        await deleteSnapshot(msgs, `chat_messages_${c.id}`);
+        await c.ref.delete();
+      }
+      step['chats'] = `deleted ${chats.size} (${messageCount} messages)`;
+    } catch (err: any) {
+      step['chats'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── discover_feed_cache/{uid}/profiles/* ───────────────────────────────
+    try {
+      const cached = await db.collection('discover_feed_cache').doc(uid).collection('profiles').get();
+      await deleteSnapshot(cached, 'discover_feed_cache');
+      await db.collection('discover_feed_cache').doc(uid).delete().catch(() => undefined);
+    } catch (err: any) {
+      step['discover_feed_cache'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── users/{uid} subcollections (notifications, settings, favorites,
+    // quiz_draft, ...) then the document itself ────────────────────────────
+    try {
+      const subcollections = await userRef.listCollections();
+      for (const sub of subcollections) {
+        const snap = await sub.get();
+        await deleteSnapshot(snap, `users_sub_${sub.id}`);
+      }
+    } catch (err: any) {
+      step['users_subcollections'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── R2 objects under users/{uid}/ across every media bucket ────────────
+    try {
+      const s3 = getR2Client();
+      let objectsDeleted = 0;
+      if (s3) {
+        for (const key of Object.keys(r2Buckets) as (keyof typeof r2Buckets)[]) {
+          const bucketName = r2Buckets[key].bucket;
+          if (!bucketName) continue;
+          try {
+            let token: string | undefined;
+            do {
+              const listed: any = await s3.send(new ListObjectsV2Command({
+                Bucket: bucketName,
+                Prefix: `users/${uid}/`,
+                ContinuationToken: token,
+              }));
+              for (const obj of listed.Contents ?? []) {
+                if (!obj.Key) continue;
+                await s3.send(new DeleteObjectCommand({ Bucket: bucketName, Key: obj.Key }));
+                objectsDeleted++;
+              }
+              token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+            } while (token);
+          } catch (err: any) {
+            step[`r2_${key}`] = `FAILED: ${err?.message || err}`;
+          }
+        }
+      } else {
+        step['r2_objects'] = 'SKIPPED: R2 client not configured';
+      }
+      step['r2_objects'] = step['r2_objects'] ?? `deleted ${objectsDeleted}`;
+    } catch (err: any) {
+      step['r2_objects'] = `FAILED: ${err?.message || err}`;
+    }
+
+    // ── The users/{uid} document itself ─────────────────────────────────────
+    await userRef.delete();
+    step['user_document'] = 'deleted';
+
+    // ── Firebase Auth record (last, so any failure above still leaves a
+    // usable account rather than an orphaned Auth entry with no data) ──────
     try {
       await getAuth().deleteUser(uid);
-    } catch { /* ignore */ }
+      step['firebase_auth'] = 'deleted';
+    } catch (err: any) {
+      step['firebase_auth'] = `FAILED or already absent: ${err?.message || err}`;
+    }
+
     await createAuditLog({
       adminId: req.admin!.uid,
       adminEmail: req.admin!.email,
       action: 'DELETE_USER',
       targetId: uid,
       targetType: 'user',
-      details: {},
+      details: {
+        deletedDisplayName: userData.displayName ?? null,
+        deletedUsername: userData.username ?? null,
+        deletedEmail: userData.email ?? null,
+        report: step,
+      },
       timestamp: new Date(),
       ip: getClientIp(req),
     });
-    res.json(successResponse(null, 'User deleted successfully'));
-  } catch (error) {
+
+    res.json(successResponse({ report: step }, 'User deleted successfully'));
+  } catch (error: any) {
+    // Log the attempt even when the top-level flow throws, so the partial
+    // cascade (whatever made it into `step` before the throw) isn't lost.
+    try {
+      await createAuditLog({
+        adminId: req.admin?.uid || 'unknown',
+        adminEmail: req.admin?.email || 'unknown',
+        action: 'DELETE_USER_FAILED',
+        targetId: uid,
+        targetType: 'user',
+        details: { error: error?.message || String(error), partialReport: step },
+        timestamp: new Date(),
+        ip: getClientIp(req),
+      });
+    } catch { /* audit log itself failing must not mask the original error */ }
     res.status(500).json(errorResponse('Failed to delete user', error));
   }
 }

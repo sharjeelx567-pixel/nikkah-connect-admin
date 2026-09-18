@@ -298,12 +298,11 @@ export async function approveIdentity(req: Request, res: Response): Promise<void
     });
     await batch.commit();
 
-    await sendPush(
-      userId,
-      '✅ Identity Verified!',
-      'Your identity has been verified. Your profile now shows the Identity Verified badge.',
-      { type: 'verification', verificationStatus: 'approved' }
-    );
+    // No sendPush() here — writing verificationStatus above fires the
+    // Firestore trigger onUserDocumentUpdated (notificationTriggers.ts),
+    // which sends the user-facing notification. Sending one here too
+    // produced two different pushes for a single approval, one with a
+    // `type` the app doesn't recognize.
 
     res.json(successResponse(null, 'Identity verification approved'));
   } catch (error) {
@@ -337,6 +336,12 @@ export async function rejectIdentity(req: Request, res: Response): Promise<void>
     batch.update(db.collection('users').doc(userId), {
       identityVerified: false,
       identityVerificationStatus: 'rejected',
+      // Mirrors approveIdentity setting verificationStatus: 'approved' — this
+      // makes onUserDocumentUpdated's trigger fire for rejections too, so it
+      // can be the single notification source instead of a manual sendPush
+      // here duplicating (and, with an unrecognized `type`, half-breaking)
+      // what the trigger already sends.
+      verificationStatus: 'rejected',
     });
     batch.set(db.collection('admin_audit_logs').doc(), {
       action: 'identity_verification_rejected',
@@ -345,13 +350,6 @@ export async function rejectIdentity(req: Request, res: Response): Promise<void>
       timestamp: FieldValue.serverTimestamp(),
     });
     await batch.commit();
-
-    await sendPush(
-      userId,
-      '❌ Identity Verification Rejected',
-      `Your documents were rejected. Reason: ${reason}. Please upload again.`,
-      { type: 'verification', verificationStatus: 'rejected' }
-    );
 
     res.json(successResponse(null, 'Identity verification rejected'));
   } catch (error) {

@@ -62,6 +62,14 @@ export async function getPendingPhotos(req: Request, res: Response): Promise<voi
         profileImage: resolvePendingImage(data),
         // Also expose all pending gallery images so admin can browse them
         pendingGalleryImages: resolvePendingGallery(data),
+        // Authoritative count, computed the SAME way getUserPhotoDetail's
+        // modal builds its list (buildUserImageList) — the frontend used to
+        // compute `1 + pendingGalleryImages.length` itself, but
+        // pendingGalleryImages above already folds the main photo in via
+        // resolvePendingGallery's unshift, so a user with exactly one photo
+        // showed "View All Photos (2)": 1 (hardcoded main) + 1 (that same
+        // photo, counted again inside the "gallery" array).
+        totalPhotoCount: buildUserImageList(data).length,
         // Flutter writes currentCity, not city (see user_model.dart)
         city: data.city || data.currentCity || data.permanentCity || '',
         gender: data.gender,

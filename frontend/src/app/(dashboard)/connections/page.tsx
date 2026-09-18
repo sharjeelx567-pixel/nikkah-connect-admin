@@ -38,6 +38,7 @@ export default function ConnectionsPage() {
       return res.data?.data || [];
     },
     enabled: activeTab === "requests",
+    refetchInterval: 30000,
   });
 
   // Fetch Compatibility Stats
@@ -48,6 +49,7 @@ export default function ConnectionsPage() {
       return res.data?.data;
     },
     enabled: activeTab === "compatibility",
+    refetchInterval: 30000,
   });
 
   // Fetch Dormant Profiles
@@ -58,6 +60,7 @@ export default function ConnectionsPage() {
       return res.data?.data || [];
     },
     enabled: activeTab === "dormant",
+    refetchInterval: 30000,
   });
 
   const connectionRequests = Array.isArray(requestsData) ? requestsData : [];
@@ -106,7 +109,7 @@ export default function ConnectionsPage() {
         {[
           { id: "requests" as const, name: "Connection Requests", icon: HeartHandshake },
           { id: "compatibility" as const, name: "Compatibility Distribution", icon: BarChart2 },
-          { id: "dormant" as const, name: "Dormant Profiles (&gt;90d)", icon: UserX },
+          { id: "dormant" as const, name: "Dormant Profiles (>90d)", icon: UserX },
         ].map((tab) => (
           <button
             key={tab.id}

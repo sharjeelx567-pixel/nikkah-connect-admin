@@ -17,6 +17,8 @@ import monitoringRoutes from './monitoring.routes';
 import contentRoutes from './content.routes';
 import familyRoutes from './family.routes';
 import chatModerationRoutes from './chatModeration.routes';
+import postsRoutes from './posts.routes';
+import communitiesRoutes from './communities.routes';
 
 const router = Router();
 
@@ -38,5 +40,7 @@ router.use('/monitoring', monitoringRoutes);
 router.use('/content', contentRoutes);
 router.use('/family', familyRoutes);
 router.use('/chat-moderation', chatModerationRoutes);
+router.use('/posts', postsRoutes);
+router.use('/communities', communitiesRoutes);
 
 export default router;
