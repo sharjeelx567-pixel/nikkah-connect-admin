@@ -101,7 +101,11 @@ export async function getReports(req: Request, res: Response): Promise<void> {
           _collection: doc._collection || 'support_tickets',
           status: (doc.status || 'open').toLowerCase(),
           category: doc._collection === 'post_reports'
-            ? (doc.contentType === 'comment' ? 'Reported Comment' : 'Reported Post')
+            ? (doc.contentType === 'community_comment'
+                ? 'Reported Community Comment'
+                : doc.contentType === 'community_post'
+                  ? 'Reported Community Post'
+                  : 'Reported Rishta Post')
             : (doc.category || doc.type || 'General Report'),
           reason: rawReason,
           description: rawDescription,

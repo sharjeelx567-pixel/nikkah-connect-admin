@@ -277,11 +277,15 @@ export default function ReportsPage() {
                       </Link>
                     ) : report._collection === "post_reports" && report.postId ? (
                       <Link
-                        href={`/posts?postId=${report.postId}`}
+                        href={
+                          report.contentType === "rishta_post"
+                            ? `/posts?postId=${report.postId}`
+                            : `/community-posts?postId=${report.postId}`
+                        }
                         className="py-2 px-3.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
-                        View {report.contentType === "comment" ? "Comment" : "Post"}
+                        View {report.contentType === "community_comment" ? "Comment" : "Post"}
                       </Link>
                     ) : (
                       <div />

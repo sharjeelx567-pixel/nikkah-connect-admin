@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { getPosts, hidePost, unhidePost, removePost } from '../controllers/posts.controller';
+import {
+  getPosts, hidePost, unhidePost, removePost,
+  getComments, hideComment, removeComment,
+} from '../controllers/community-posts.controller';
 import { authenticate, requirePermission } from '../middlewares/auth.middleware';
 
-// Rishta Posting moderation only — no comments (Rishta Posting has none;
-// see community-posts.routes.ts for Community Discussion's post+comment
-// moderation).
 const router = Router();
 
 router.use(authenticate);
@@ -13,5 +13,9 @@ router.get('/', requirePermission('posts.view'), getPosts);
 router.patch('/:id/hide', requirePermission('posts.manage'), hidePost);
 router.patch('/:id/unhide', requirePermission('posts.manage'), unhidePost);
 router.patch('/:id/remove', requirePermission('posts.manage'), removePost);
+
+router.get('/comments', requirePermission('posts.view'), getComments);
+router.patch('/:postId/comments/:commentId/hide', requirePermission('posts.manage'), hideComment);
+router.patch('/:postId/comments/:commentId/remove', requirePermission('posts.manage'), removeComment);
 
 export default router;

@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import api from "../../../services/api";
-import UserAvatar from "../../../components/common/UserAvatar";
 import {
   ShieldCheck,
   EyeOff,
@@ -13,33 +12,119 @@ import {
   Clock,
   Flag,
   Heart,
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
-interface AdminPost {
+interface AdminCommunityPost {
   id: string;
+  communityId: string;
   authorUid: string;
   author: { name?: string; email?: string } | null;
-  displayName: string;
-  age: number;
-  city: string;
-  photoUrl: string | null;
-  aboutMe: string;
+  authorDisplayName: string;
+  text: string;
+  imageUrl: string | null;
   status: "active" | "hidden" | "removed";
   moderationReason: string | null;
   likeCount: number;
+  commentCount: number;
   reportCount: number;
   createdAt: any;
 }
 
-export default function PostsPage() {
+interface AdminComment {
+  id: string;
+  postId: string;
+  authorUid: string;
+  author: { name?: string; email?: string } | null;
+  text: string;
+  status: "active" | "hidden" | "removed";
+  parentCommentId: string | null;
+  createdAt: any;
+}
+
+function formatDate(raw: any) {
+  if (!raw) return "";
+  const d = raw._seconds ? new Date(raw._seconds * 1000) : new Date(raw);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function statusBadge(status: string) {
+  if (status === "hidden") {
+    return <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold">Hidden</span>;
+  }
+  if (status === "removed") {
+    return <span className="px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-bold">Removed</span>;
+  }
+  return <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold">Active</span>;
+}
+
+function PostComments({ postId }: { postId: string }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery<{ data: { data: AdminComment[] } }>({
+    queryKey: ["community-post-comments", postId],
+    queryFn: async () => {
+      const response = await api.get(`/community-posts/comments?postId=${postId}`);
+      return response.data;
+    },
+  });
+  const comments = data?.data?.data || [];
+
+  const moderateMutation = useMutation({
+    mutationFn: ({ commentId, action }: { commentId: string; action: "hide" | "remove" }) =>
+      api.patch(`/community-posts/${postId}/comments/${commentId}/${action}`, { reason: action === "hide" ? "Moderator review" : undefined }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["community-post-comments", postId] }),
+  });
+
+  if (isLoading) return <p className="text-xs text-slate-400 py-2">Loading comments...</p>;
+  if (comments.length === 0) return <p className="text-xs text-slate-400 py-2">No comments on this post.</p>;
+
+  return (
+    <div className="space-y-2">
+      {comments.map((c) => (
+        <div key={c.id} className={`flex items-start justify-between gap-3 p-2.5 rounded-lg border border-slate-100 bg-slate-50 ${c.parentCommentId ? "ml-6" : ""}`}>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold text-slate-700">{c.author?.name || c.authorUid} {c.parentCommentId ? <span className="text-slate-400 font-normal">(reply)</span> : null}</p>
+            <p className="text-xs text-slate-700 mt-0.5 break-words">{c.text}</p>
+            <div className="flex items-center gap-2 mt-1">{statusBadge(c.status)}<span className="text-[10px] text-slate-400">{formatDate(c.createdAt)}</span></div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {c.status !== "hidden" && c.status !== "removed" && (
+              <button
+                onClick={() => moderateMutation.mutate({ commentId: c.id, action: "hide" })}
+                disabled={moderateMutation.isPending}
+                className="py-1.5 px-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <EyeOff className="w-3 h-3" /> Hide
+              </button>
+            )}
+            {c.status !== "removed" && (
+              <button
+                onClick={() => moderateMutation.mutate({ commentId: c.id, action: "remove" })}
+                disabled={moderateMutation.isPending}
+                className="py-1.5 px-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3" /> Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function CommunityPostsPage() {
   const queryClient = useQueryClient();
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery<{ data: { data: AdminPost[] } }>({
-    queryKey: ["posts-list", filterStatus],
+  const { data, isLoading } = useQuery<{ data: { data: AdminCommunityPost[] } }>({
+    queryKey: ["community-posts-list", filterStatus],
     queryFn: async () => {
       const param = filterStatus !== "all" ? `?status=${filterStatus}` : "";
-      const response = await api.get(`/posts${param}`);
+      const response = await api.get(`/community-posts${param}`);
       return response.data;
     },
     refetchInterval: 15000,
@@ -48,30 +133,14 @@ export default function PostsPage() {
   const posts = data?.data?.data || [];
 
   const moderate = (id: string, action: "hide" | "unhide" | "remove") =>
-    api.patch(`/posts/${id}/${action}`, { reason: action === "hide" ? "Moderator review" : undefined });
+    api.patch(`/community-posts/${id}/${action}`, { reason: action === "hide" ? "Moderator review" : undefined });
 
   const moderateMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: "hide" | "unhide" | "remove" }) => moderate(id, action),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts-list"] });
+      queryClient.invalidateQueries({ queryKey: ["community-posts-list"] });
     },
   });
-
-  const formatDate = (raw: any) => {
-    if (!raw) return "";
-    const d = raw._seconds ? new Date(raw._seconds * 1000) : new Date(raw);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-  };
-
-  const statusBadge = (status: string) => {
-    if (status === "hidden") {
-      return <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs font-bold">Hidden</span>;
-    }
-    if (status === "removed") {
-      return <span className="px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-bold">Removed</span>;
-    }
-    return <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold">Active</span>;
-  };
 
   return (
     <div className="space-y-6">
@@ -79,10 +148,10 @@ export default function PostsPage() {
         <div>
           <h2 className="text-base font-bold font-display text-slate-900 flex items-center gap-2">
             <Flag className="w-4 h-4 text-indigo-600" />
-            Rishta Posts
+            Community Discussion Posts
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Review and moderate user-submitted rishta posts.
+            Review and moderate discussion posts and comments across all communities.
           </p>
         </div>
         <select
@@ -109,7 +178,7 @@ export default function PostsPage() {
             <ShieldCheck className="w-7 h-7" />
           </div>
           <h3 className="text-base font-bold font-display text-slate-900">No Posts Found</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-sm">No rishta posts match the selected filter.</p>
+          <p className="text-xs text-slate-400 mt-1 max-w-sm">No community discussion posts match the selected filter.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -123,12 +192,9 @@ export default function PostsPage() {
                 className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-sm transition-all flex flex-col gap-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <UserAvatar src={post.photoUrl || undefined} name={post.displayName} className="w-10 h-10 rounded-xl shadow-xs" />
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">{post.displayName}, {post.age}</h4>
-                      <p className="text-[11px] text-slate-500">{post.city} · by {post.author?.name || post.authorUid}</p>
-                    </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-900">{post.authorDisplayName}</h4>
+                    <p className="text-[11px] text-slate-500">community: {post.communityId} · by {post.author?.name || post.authorUid}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-400 flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{formatDate(post.createdAt)}</span>
@@ -136,9 +202,7 @@ export default function PostsPage() {
                   </div>
                 </div>
 
-                {post.aboutMe && (
-                  <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 line-clamp-3">{post.aboutMe}</p>
-                )}
+                <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-lg border border-slate-100 line-clamp-3">{post.text}</p>
 
                 {post.moderationReason && (
                   <p className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
@@ -149,6 +213,13 @@ export default function PostsPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-4 text-xs text-slate-500">
                     <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5" />{post.likeCount}</span>
+                    <button
+                      onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
+                      className="flex items-center gap-1 hover:text-indigo-600 cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />{post.commentCount}
+                      {expandedPostId === post.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
                     {post.reportCount > 0 && (
                       <span className="flex items-center gap-1 text-rose-600 font-semibold"><Flag className="w-3.5 h-3.5" />{post.reportCount} report{post.reportCount === 1 ? "" : "s"}</span>
                     )}
@@ -183,6 +254,12 @@ export default function PostsPage() {
                     )}
                   </div>
                 </div>
+
+                {expandedPostId === post.id && (
+                  <div className="pt-3 border-t border-slate-100">
+                    <PostComments postId={post.id} />
+                  </div>
+                )}
               </motion.div>
             ))}
           </AnimatePresence>

@@ -262,14 +262,15 @@ export interface AuditLog {
   ip: string;
 }
 
-// Community + Relationship Posts — deliberately a stricter design than
-// Report above (post_reports uses a deterministic {postId|commentId}_
-// {reporterId} doc id, Cloud-Function-only writes, never a direct client
-// .add()) — see functions/src/index.ts's reportPostContent.
+// Rishta Posting + Community Discussion — two separate features (see
+// functions/src/index.ts) sharing this one report shape. Deliberately a
+// stricter design than Report above (post_reports uses a deterministic
+// {postId|commentId}_{reporterId} doc id, Cloud-Function-only writes,
+// never a direct client .add()).
 export interface PostReport {
   id?: string;
   reporterId: string;
-  contentType: 'post' | 'comment';
+  contentType: 'rishta_post' | 'community_post' | 'community_comment';
   postId: string;
   commentId?: string;
   targetAuthorUid: string;
@@ -280,9 +281,10 @@ export interface PostReport {
   createdAt: FirebaseFirestore.Timestamp;
 }
 
-export interface RelationshipPost {
+// Rishta Posting — a profile-snapshot post, not community-scoped, and
+// never carries comments (see CommunityPost below for that).
+export interface RishtaPost {
   id?: string;
-  communityId: string;
   authorUid: string;
   profileUid: string;
   displayName: string;
@@ -295,6 +297,26 @@ export interface RelationshipPost {
   aboutMe?: string;
   partnerPreferences?: string;
   photoUrl?: string;
+  status: 'active' | 'hidden' | 'removed';
+  moderatedBy?: string;
+  moderatedAt?: FirebaseFirestore.Timestamp;
+  moderationReason?: string;
+  likeCount: number;
+  reportCount: number;
+  createdAt: FirebaseFirestore.Timestamp;
+  updatedAt: FirebaseFirestore.Timestamp;
+}
+
+// Community Discussion — a text post scoped to a community, with comments.
+// Never carries Match-related fields; Community Discussion never creates a
+// Match.
+export interface CommunityPost {
+  id?: string;
+  communityId: string;
+  authorUid: string;
+  authorDisplayName: string;
+  text: string;
+  imageUrl?: string;
   status: 'active' | 'hidden' | 'removed';
   moderatedBy?: string;
   moderatedAt?: FirebaseFirestore.Timestamp;

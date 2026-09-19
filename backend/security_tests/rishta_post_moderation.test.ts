@@ -1,7 +1,10 @@
-// Emulator-only regression tests for the Community/Relationship Posts admin
-// moderation feature (posts.controller.ts, communities.controller.ts, and
-// the post_reports extension to reports.controller.ts). Run via firebase
-// emulators:exec — never against production.
+// Emulator-only regression tests for Rishta Posting admin moderation
+// (posts.controller.ts, and the post_reports extension to
+// reports.controller.ts). Split out of post_moderation.test.ts when Rishta
+// Posting was separated from Community Discussion — this suite covers
+// rishta_posts only (no comments; that's Community Discussion's concept,
+// see community_post_moderation.test.ts). Run via firebase emulators:exec
+// — never against production.
 
 process.env.NODE_ENV = 'test';
 // Must load .env (for JWT_SECRET/JWT_REFRESH_SECRET) before this file's own
@@ -39,45 +42,39 @@ async function main() {
   const stamp = Date.now();
 
   // ── seed: a posts.view-only admin, a full posts.manage moderator, and a
-  //    target post + comment + post_report to moderate ──────────────────
-  const viewOnlyRef = db.collection('admins').doc(`postsview_${stamp}`);
-  await viewOnlyRef.set({ email: `postsview_${stamp}@test.local`, role: 'analyst', permissions: ['posts.view'], isActive: true });
-  const viewOnlyToken = signAccessToken({ uid: `postsview_${stamp}`, email: 'x', role: 'analyst' as any });
+  //    target rishta post + post_report to moderate ──────────────────────
+  const viewOnlyRef = db.collection('admins').doc(`rpview_${stamp}`);
+  await viewOnlyRef.set({ email: `rpview_${stamp}@test.local`, role: 'analyst', permissions: ['posts.view'], isActive: true });
+  const viewOnlyToken = signAccessToken({ uid: `rpview_${stamp}`, email: 'x', role: 'analyst' as any });
 
-  const moderatorRef = db.collection('admins').doc(`postsmod_${stamp}`);
-  await moderatorRef.set({ email: `postsmod_${stamp}@test.local`, role: 'moderator', isActive: true });
-  const moderatorToken = signAccessToken({ uid: `postsmod_${stamp}`, email: 'x', role: 'moderator' as any });
+  const moderatorRef = db.collection('admins').doc(`rpmod_${stamp}`);
+  await moderatorRef.set({ email: `rpmod_${stamp}@test.local`, role: 'moderator', isActive: true });
+  const moderatorToken = signAccessToken({ uid: `rpmod_${stamp}`, email: 'x', role: 'moderator' as any });
 
-  const authorUid = `post_author_${stamp}`;
+  const authorUid = `rp_author_${stamp}`;
   await db.collection('users').doc(authorUid).set({ displayName: 'Post Author', email: 'author@test.local' });
-  const reporterUid = `post_reporter_${stamp}`;
+  const reporterUid = `rp_reporter_${stamp}`;
   await db.collection('users').doc(reporterUid).set({ displayName: 'Reporter', email: 'reporter@test.local' });
 
-  const postRef = db.collection('relationship_posts').doc(`post_${stamp}`);
+  const postRef = db.collection('rishta_posts').doc(`post_${stamp}`);
   await postRef.set({
-    id: postRef.id, communityId: 'test_comm', authorUid, profileUid: authorUid,
+    id: postRef.id, authorUid, profileUid: authorUid,
     displayName: 'Author', age: 27, gender: 'Male', city: 'Lahore',
-    status: 'active', likeCount: 0, commentCount: 1, reportCount: 1,
+    status: 'active', likeCount: 0, reportCount: 1,
     createdAt: new Date(), updatedAt: new Date(),
-  });
-
-  const commentRef = postRef.collection('comments').doc(`comment_${stamp}`);
-  await commentRef.set({
-    id: commentRef.id, postId: postRef.id, authorUid: reporterUid, authorDisplayName: 'Reporter',
-    text: 'inappropriate comment', status: 'active', createdAt: new Date(), updatedAt: new Date(),
   });
 
   const postReportRef = db.collection('post_reports').doc(`${postRef.id}_${reporterUid}`);
   await postReportRef.set({
-    id: postReportRef.id, reporterId: reporterUid, contentType: 'post', postId: postRef.id,
+    id: postReportRef.id, reporterId: reporterUid, contentType: 'rishta_post', postId: postRef.id,
     targetAuthorUid: authorUid, reason: 'Suspicious profile', status: 'pending', createdAt: new Date(),
   });
 
   console.log('\n=== TEST 1: GET /posts requires posts.view (403 without it) ===');
   {
-    const noPermRef = db.collection('admins').doc(`noperm_${stamp}`);
-    await noPermRef.set({ email: `noperm_${stamp}@test.local`, role: 'support_staff', isActive: true });
-    const noPermToken = signAccessToken({ uid: `noperm_${stamp}`, email: 'x', role: 'support_staff' as any });
+    const noPermRef = db.collection('admins').doc(`rpnoperm_${stamp}`);
+    await noPermRef.set({ email: `rpnoperm_${stamp}@test.local`, role: 'support_staff', isActive: true });
+    const noPermToken = signAccessToken({ uid: `rpnoperm_${stamp}`, email: 'x', role: 'support_staff' as any });
 
     const res = await fetch(`${base}/posts`, { headers: { Authorization: `Bearer ${noPermToken}` } });
     assert(res.status === 403, `a role without posts.view gets 403 (got ${res.status})`);
@@ -86,7 +83,18 @@ async function main() {
     assert(okRes.status === 200, `a role WITH posts.view gets 200 (got ${okRes.status})`);
   }
 
-  console.log('\n=== TEST 2: PATCH /posts/:id/hide requires posts.manage (view-only is rejected) ===');
+  console.log('\n=== TEST 2: GET /posts response has no communityId/commentCount (rishta posts are not community-scoped, have no comments) ===');
+  {
+    const res = await fetch(`${base}/posts`, { headers: { Authorization: `Bearer ${viewOnlyToken}` } });
+    const body: any = await res.json();
+    const items: any[] = body.data?.data || [];
+    const found = items.find((it) => it.id === postRef.id);
+    assert(!!found, 'the seeded rishta post appears in the listing');
+    assert(found.communityId === undefined, 'response item has no communityId field');
+    assert(found.commentCount === undefined, 'response item has no commentCount field');
+  }
+
+  console.log('\n=== TEST 3: PATCH /posts/:id/hide requires posts.manage (view-only is rejected) ===');
   {
     const res = await fetch(`${base}/posts/${postRef.id}/hide`, {
       method: 'PATCH',
@@ -99,7 +107,7 @@ async function main() {
     assert(doc.data()?.status === 'active', 'post status is unchanged after the rejected attempt');
   }
 
-  console.log('\n=== TEST 3: a posts.manage admin CAN hide a post — writes status/moderatedBy/moderatedAt and an audit log ===');
+  console.log('\n=== TEST 4: a posts.manage admin CAN hide a post — writes status/moderatedBy/moderatedAt and an audit log ===');
   {
     const beforeAuditSnap = await db.collection('admin_audit_logs').where('targetId', '==', postRef.id).where('targetType', '==', 'post').get();
     const beforeCount = beforeAuditSnap.size;
@@ -113,7 +121,7 @@ async function main() {
 
     const doc = await postRef.get();
     assert(doc.data()?.status === 'hidden', `post status is now hidden (got ${doc.data()?.status})`);
-    assert(doc.data()?.moderatedBy === `postsmod_${stamp}`, 'moderatedBy is set to the acting admin uid');
+    assert(doc.data()?.moderatedBy === `rpmod_${stamp}`, 'moderatedBy is set to the acting admin uid');
     assert(!!doc.data()?.moderatedAt, 'moderatedAt is set');
     assert(doc.data()?.moderationReason === 'Reported content under review', 'moderationReason is stored');
 
@@ -121,23 +129,13 @@ async function main() {
     assert(afterAuditSnap.size === beforeCount + 1, `exactly one new audit log entry was created for this post (before=${beforeCount}, after=${afterAuditSnap.size})`);
   }
 
-  console.log('\n=== TEST 4: a posts.manage admin can hide a comment — writes status and an audit log with targetType comment ===');
+  console.log('\n=== TEST 5: GET /posts/comments is not exposed for Rishta Posting (no comments route) ===');
   {
-    const res = await fetch(`${base}/posts/${postRef.id}/comments/${commentRef.id}/hide`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${moderatorToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason: 'Inappropriate language' }),
-    });
-    assert(res.status === 200, `hide comment request succeeds (got ${res.status})`);
-
-    const doc = await commentRef.get();
-    assert(doc.data()?.status === 'hidden', 'comment status is now hidden');
-
-    const auditSnap = await db.collection('admin_audit_logs').where('targetId', '==', commentRef.id).where('targetType', '==', 'comment').get();
-    assert(auditSnap.size >= 1, 'an audit log entry with targetType=comment was created');
+    const res = await fetch(`${base}/posts/comments`, { headers: { Authorization: `Bearer ${moderatorToken}` } });
+    assert(res.status === 404, `GET /posts/comments does not exist (got ${res.status})`);
   }
 
-  console.log('\n=== TEST 5: GET /reports returns merged post_reports items tagged _collection=post_reports ===');
+  console.log('\n=== TEST 6: GET /reports returns the merged post_reports item tagged contentType=rishta_post ===');
   {
     const res = await fetch(`${base}/reports?status=pending`, { headers: { Authorization: `Bearer ${moderatorToken}` } });
     assert(res.status === 200, `GET /reports succeeds (got ${res.status})`);
@@ -146,14 +144,12 @@ async function main() {
     const found = items.find((it) => it.id === postReportRef.id);
     assert(!!found, `the seeded post_reports item appears in the merged /reports listing (found ${items.length} items)`);
     assert(found?._collection === 'post_reports', 'the item is correctly tagged _collection=post_reports');
-    assert(found?.postId === postRef.id, 'the item carries the postId for the admin UI to link to');
+    assert(found?.contentType === 'rishta_post', 'the item carries contentType=rishta_post');
+    assert(found?.category === 'Reported Rishta Post', `category label is "Reported Rishta Post" (got ${found?.category})`);
   }
 
-  console.log('\n=== TEST 6: PATCH /reports/:id/resolve on a post_reports-sourced id writes status AND an audit log (the pre-existing gap this closes) ===');
+  console.log('\n=== TEST 7: PATCH /reports/:id/resolve on the post_reports-sourced id writes status AND an audit log ===');
   {
-    const beforeAuditSnap = await db.collection('admin_audit_logs').where('targetId', '==', postReportRef.id).get();
-    const beforeCount = beforeAuditSnap.size;
-
     const res = await fetch(`${base}/reports/${postReportRef.id}/resolve`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${moderatorToken}` },
@@ -162,13 +158,10 @@ async function main() {
 
     const doc = await postReportRef.get();
     assert(doc.data()?.status === 'resolved', `post_reports status is now resolved (got ${doc.data()?.status})`);
-    assert(doc.data()?.resolvedBy === `postsmod_${stamp}`, 'resolvedBy is set to the acting admin uid');
-
-    const afterAuditSnap = await db.collection('admin_audit_logs').where('targetId', '==', postReportRef.id).get();
-    assert(afterAuditSnap.size === beforeCount + 1, `exactly one new audit log entry was created for this report resolution (before=${beforeCount}, after=${afterAuditSnap.size})`);
+    assert(doc.data()?.resolvedBy === `rpmod_${stamp}`, 'resolvedBy is set to the acting admin uid');
   }
 
-  console.log('\n=== TEST 7: an unhidden post is restored to active and its postCount-affecting status is reflected ===');
+  console.log('\n=== TEST 8: an unhidden post is restored to active ===');
   {
     const res = await fetch(`${base}/posts/${postRef.id}/unhide`, {
       method: 'PATCH',

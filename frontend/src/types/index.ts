@@ -176,10 +176,11 @@ export interface Report {
   id: string;
   _collection?: "reports" | "support_tickets" | "post_reports";
   // Only present for _collection === "post_reports" — lets the UI link
-  // straight to the reported relationship post/comment.
+  // straight to the reported rishta post / community post / community
+  // comment.
   postId?: string;
   commentId?: string | null;
-  contentType?: "post" | "comment";
+  contentType?: "rishta_post" | "community_post" | "community_comment";
   userId?: string;
   reporterId?: string;
   reporterUid?: string;

@@ -26,8 +26,7 @@ import {
   Activity,
   HeartHandshake,
   Radio,
-  FileText,
-  Users2
+  FileText
 } from "lucide-react";
 
 interface SidebarProps {
@@ -78,8 +77,8 @@ export default function Sidebar({ pendingCounts }: SidebarProps) {
         { name: "Photo Moderation", href: "/photos", icon: ImageIcon, badgeKey: "photos", permission: "photos.view" },
         { name: "Verification", href: "/verification", icon: ShieldCheck, badgeKey: "verifications", permission: "verification.view" },
         { name: "Reports Center", href: "/reports", icon: AlertTriangle, badgeKey: "reports", permission: "reports.view" },
-        { name: "Communities", href: "/communities", icon: Users2, permission: "content.view" },
-        { name: "Relationship Posts", href: "/posts", icon: Users2, permission: "posts.view" },
+        { name: "Rishta Posts", href: "/posts", icon: HeartHandshake, permission: "posts.view" },
+        { name: "Community", href: "/community-posts", icon: MessageSquare, permission: "posts.view" },
         { name: "Support Helpdesk", href: "/support", icon: LifeBuoy, badgeKey: "support", permission: "support.view" },
       ],
     },
