@@ -118,8 +118,7 @@ export interface NikkahUser {
   city?: string;
   country?: string;
   profession?: string;
-  occupation?: string;
-  education?: string;
+  educationLevel?: string;
   age?: number;
   maritalStatus?: string;
   bio?: string;

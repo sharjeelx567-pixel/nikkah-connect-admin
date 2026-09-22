@@ -7,6 +7,19 @@ import { r2Buckets, getR2Client } from '../config/r2';
 import { successResponse, errorResponse, getPaginationParams, createAuditLog, getClientIp, serverTimestamp } from '../utils/helpers';
 import { NikkahUser } from '../types';
 
+// Flutter never writes a plain `age` field — only `dateOfBirth` (a Firestore
+// Timestamp), computing age client-side wherever it's displayed. The admin
+// frontend expects `age` directly, so it must be computed here the same way.
+function computeAge(dateOfBirth: unknown): number | undefined {
+  const dob = (dateOfBirth as FirebaseFirestore.Timestamp | undefined)?.toDate?.();
+  if (!dob) return undefined;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const monthDiff = now.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 /**
  * Decides whether an FCM push should be sent.
  *
@@ -134,6 +147,7 @@ export async function getUsers(req: Request, res: Response): Promise<void> {
         email: data.email ?? sensitive?.email,
         phoneNumber: data.phoneNumber ?? sensitive?.phoneNumber,
         city: data.city || data.currentCity || data.permanentCity || '',
+        age: computeAge(data.dateOfBirth),
       };
     }) as NikkahUser[];
 
@@ -176,6 +190,8 @@ export async function getUserById(req: Request, res: Response): Promise<void> {
       ...data,
       email: data.email ?? sensitive.data()?.email,
       phoneNumber: data.phoneNumber ?? sensitive.data()?.phoneNumber,
+      city: data.city || data.currentCity || data.permanentCity || '',
+      age: computeAge(data.dateOfBirth),
     }));
   } catch (error) {
     res.status(500).json(errorResponse('Failed to fetch user', error));

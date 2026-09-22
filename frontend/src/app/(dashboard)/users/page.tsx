@@ -371,9 +371,9 @@ export default function UsersPage() {
                     <td className="px-6 py-4 text-slate-600">
                       <div>
                         <span>{[user.gender, user.city].filter(Boolean).join(" • ") || "—"}</span>
-                        {user.occupation && (
+                        {user.profession && (
                           <span className="text-[11px] text-slate-400 block truncate mt-0.5">
-                            {user.occupation}
+                            {user.profession}
                           </span>
                         )}
                       </div>
@@ -579,7 +579,7 @@ export default function UsersPage() {
                         Profession
                       </span>
                       <p className="font-bold text-slate-900 mt-1">
-                        {selectedUser.occupation || "Not listed"}
+                        {selectedUser.profession || "Not listed"}
                       </p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -587,7 +587,7 @@ export default function UsersPage() {
                         Education
                       </span>
                       <p className="font-bold text-slate-900 mt-1">
-                        {selectedUser.education || "Not specified"}
+                        {selectedUser.educationLevel || "Not specified"}
                       </p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
